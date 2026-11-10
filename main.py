@@ -11,6 +11,10 @@ WINDOWED_SIZE = (1280, 720)
 FPS = 144
 GRID_STEP = 100
 GRID_COLOR = (45, 52, 68)
+HUD_FONT_SIZE = 32
+HUD_MARGIN = 40
+HUD_COLOR = (255, 255, 255)
+HUD_EMPTY_COLOR = (255, 80, 80)
 
 
 class Camera:
@@ -31,14 +35,67 @@ class Camera:
         self.pos += (target_pos - self.pos) * t
 
 
+def raycast(start: pygame.Vector2, direction: pygame.Vector2, max_range: float,
+            targets: list["GameObject"], ignore: "GameObject | None" = None
+            ) -> tuple[pygame.Vector2, "GameObject | None"]:
+    """Hitscan: zwraca (punkt trafienia, trafiony obiekt) - najbliższy kolizyjny obiekt na linii.
+    Bez trafienia zwraca punkt na końcu zasięgu i None."""
+    end = start + direction * max_range
+    best_point, best_obj, best_dist = end, None, math.inf
+    for obj in targets:
+        if obj is ignore or not obj.collidable:
+            continue
+        clipped = obj.rect.clipline((start.x, start.y), (end.x, end.y))
+        if not clipped:
+            continue
+        point = pygame.Vector2(clipped[0])  # pierwszy punkt = wejście w obiekt (najbliżej strzelca)
+        dist = start.distance_squared_to(point)
+        if dist < best_dist:
+            best_point, best_obj, best_dist = point, obj, dist
+    return best_point, best_obj
+
+
+class Tracer:
+    """Chwilowa linia pokazująca tor strzału (efekt prototypowy)."""
+
+    DURATION = 0.08  # sekundy
+    COLOR = (255, 230, 80)
+    WIDTH = 3
+
+    def __init__(self, start: pygame.Vector2, end: pygame.Vector2):
+        self.start = pygame.Vector2(start)
+        self.end = pygame.Vector2(end)
+        self.age = 0.0
+
+    @property
+    def alive(self) -> bool:
+        return self.age < self.DURATION
+
+    def update(self, dt: float) -> None:
+        self.age += dt
+
+    def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
+        pygame.draw.line(surface, self.COLOR, self.start - camera_offset, self.end - camera_offset, self.WIDTH)
+
+
 class Gun:
-    """Prototypowy pistolet (prostokąt) obracany w stronę celu."""
+    """Prototypowy pistolet (prostokąt) obracany w stronę celu. Strzela hitscanem."""
 
     LENGTH = 60
     THICKNESS = 16
     HOLD_DISTANCE = 45  # odległość środka pistoletu od środka gracza
+    RANGE = 2000  # zasięg hitscanu (px)
 
-    def __init__(self, owner_pos: pygame.Vector2):
+    def __init__(self, owner_pos: pygame.Vector2, automatic: bool = True, fire_rate: float = 6.0,
+                 magazine_size: int = 12, reload_time: float = 1.5):
+        """automatic: True = ogień ciągły po przytrzymaniu LPM, False = jeden strzał na kliknięcie.
+        fire_rate: strzały na sekundę. magazine_size: pojemność magazynka. reload_time: sekundy."""
+        self.automatic = automatic
+        self.fire_rate = fire_rate
+        self.magazine_size = magazine_size
+        self.reload_time = reload_time
+        self.ammo = magazine_size
+        self.reload_left = 0.0  # >0 = trwa przeładowanie
         self.pos = pygame.Vector2(owner_pos)
         self.direction = pygame.Vector2(1, 0)
         self.angle = 0.0  # stopnie, 0 = w prawo
@@ -46,6 +103,36 @@ class Gun:
         self.base_image = pygame.Surface((self.LENGTH, self.THICKNESS), pygame.SRCALPHA)  # alfa: rogi po obrocie przezroczyste
         self.base_image.fill((200, 200, 200))
         self.image = self.base_image
+        self.cooldown = 0.0
+
+    @property
+    def reloading(self) -> bool:
+        return self.reload_left > 0
+
+    def update(self, dt: float) -> None:
+        self.cooldown = max(0.0, self.cooldown - dt)
+        if self.reloading:
+            self.reload_left -= dt
+            if self.reload_left <= 0:
+                self.reload_left = 0.0
+                self.ammo = self.magazine_size
+
+    def start_reload(self) -> None:
+        if not self.reloading and self.ammo < self.magazine_size:
+            self.reload_left = self.reload_time
+
+    def fire(self, owner: "GameObject", targets: list["GameObject"], trigger_held: bool,
+             trigger_pressed: bool) -> "tuple[Tracer, GameObject | None] | None":
+        """Oddaje strzał, jeśli spust jest wciśnięty (zależnie od trybu), jest amunicja, nie trwa
+        przeładowanie i minął cooldown. Zwraca (efekt linii, trafiony obiekt) lub None."""
+        wants_fire = trigger_held if self.automatic else trigger_pressed
+        if not wants_fire or self.reloading or self.ammo <= 0 or self.cooldown > 0:
+            return None
+        self.ammo -= 1
+        self.cooldown = 1.0 / self.fire_rate
+        hit_point, hit_obj = raycast(owner.pos, self.direction, self.RANGE, targets, ignore=owner)
+        muzzle = self.pos + self.direction * (self.LENGTH / 2)
+        return Tracer(muzzle, hit_point), hit_obj
 
     def aim_at(self, owner_pos: pygame.Vector2, world_target: pygame.Vector2) -> None:
         to_target = world_target - owner_pos
@@ -172,6 +259,9 @@ class Player(GameObject):
     def aim_at(self, world_target: pygame.Vector2) -> None:
         self.gun.aim_at(self.pos, world_target)
 
+    def shoot(self, targets: list[GameObject], trigger_held: bool, trigger_pressed: bool):
+        return self.gun.fire(self, targets, trigger_held, trigger_pressed)
+
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
         super().draw(surface, camera_offset)
         self.gun.draw(surface, camera_offset)
@@ -189,6 +279,9 @@ class Game:
         self.clock = pygame.time.Clock()
         self.running = True
         self.player = Player(0, 0)
+        self.tracers: list[Tracer] = []
+        self.fire_pressed = False
+        self.hud_font = pygame.font.Font(None, HUD_FONT_SIZE)
         # Obiekty świata (poza graczem). Kolizje: flaga `collidable` w konstruktorze obiektu.
         self.objects: list[GameObject] = [
             Bot("Bot1", 400, -250), Bot("Bot2", -500, 200), Bot("Bot3", 300, 450),
@@ -213,10 +306,23 @@ class Game:
                 self.running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
                 self.toggle_fullscreen()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                self.player.gun.start_reload()
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self.fire_pressed = True  # kliknięcie w tej klatce (dla broni półautomatycznych)
 
     def update(self, dt: float) -> None:
         self.player.update(dt, pygame.key.get_pressed(), self.objects)
         self.player.aim_at(self.mouse_world_pos())
+        self.player.gun.update(dt)
+        result = self.player.shoot(self.objects, pygame.mouse.get_pressed()[0], self.fire_pressed)
+        self.fire_pressed = False
+        if result:
+            tracer, _hit_obj = result  # trafiony obiekt - na razie bez efektu (brak ustalonych zasad obrażeń)
+            self.tracers.append(tracer)
+        for tracer in self.tracers:
+            tracer.update(dt)
+        self.tracers = [t for t in self.tracers if t.alive]
         self.camera.update(dt, self.player.pos)
 
     def _draw_grid(self, offset: pygame.Vector2) -> None:
@@ -234,7 +340,18 @@ class Game:
         for obj in self.objects:
             obj.draw(self.canvas, offset)
         self.player.draw(self.canvas, offset)
+        for tracer in self.tracers:
+            tracer.draw(self.canvas, offset)
+        self._draw_hud()
         self._present()
+
+    def _draw_hud(self) -> None:
+        """Proste UI (rysowane po świecie, na stałe w rogu wirtualnego ekranu): amunicja."""
+        gun = self.player.gun
+        text = f"{gun.ammo} / {gun.magazine_size}"
+        color = HUD_COLOR if gun.ammo > 0 else HUD_EMPTY_COLOR
+        image = self.hud_font.render(text, True, color)
+        self.canvas.blit(image, image.get_rect(bottomright=(VIRTUAL_W - HUD_MARGIN, VIRTUAL_H - HUD_MARGIN)))
 
     def _viewport(self) -> tuple[float, pygame.Vector2, tuple[int, int]]:
         """Zwraca (skala, lewy górny róg obrazu w oknie, rozmiar obrazu) dla letterboxingu."""
