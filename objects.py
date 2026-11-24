@@ -65,10 +65,16 @@ class GameObject:
         # Placeholder (greybox) - później podmiana na .png
         self.image = pygame.Surface((width, height))
         self.image.fill(color)
+        self._rect = self.image.get_rect(center=(round(x), round(y)))
+        self._rect_pos = (self.pos.x, self.pos.y)
 
     @property
     def rect(self) -> pygame.Rect:
-        return self.image.get_rect(center=(round(self.pos.x), round(self.pos.y)))
+        pos = (self.pos.x, self.pos.y)
+        if pos != self._rect_pos:
+            self._rect.center = (round(pos[0]), round(pos[1]))
+            self._rect_pos = pos
+        return self._rect
 
     def move_and_collide(self, delta: pygame.Vector2, solids: list[GameObject]) -> None:
         """Przesuwa obiekt osobno w osi X i Y i cofa go przy zderzeniu z kolizyjnymi obiektami
@@ -84,10 +90,11 @@ class GameObject:
             self.pos[axis] += delta[axis]
             if not self.collidable:
                 continue
+            mine = self.rect
             for other in solids:
                 if other is self or not other.collidable:
                     continue
-                mine, theirs = self.rect, other.rect
+                theirs = other.rect
                 if not mine.colliderect(theirs):
                     continue
                 half = (mine.width if axis == 0 else mine.height) / 2
@@ -95,6 +102,7 @@ class GameObject:
                     self.pos.x = theirs.left - half if delta.x > 0 else theirs.right + half
                 else:
                     self.pos.y = theirs.top - half if delta.y > 0 else theirs.bottom + half
+                mine = self.rect
 
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
         surface.blit(self.image, self.rect.move(-round(camera_offset.x), -round(camera_offset.y)))

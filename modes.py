@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, TYPE_CHECKING
 
+from battle_royale import BattleRoyaleScene
 from deathmatch import DeathmatchScene
 from game import GameScene
 
@@ -49,6 +50,15 @@ class GameMode:
 
 
 MODES: list[GameMode] = [
+    GameMode(
+        id="battle_royale", name="Battle Royale", description="100 players, loot chests, purple storm",
+        category="singleplayer", color=(145, 65, 200),
+        options=(
+            ModeOption("difficulty", "Bot Difficulty", 1, 5, 1, 3,
+                       lambda v: DIFFICULTY_LABELS.get(int(v), str(int(v)))),
+        ),
+        create_scene=lambda app, opts: BattleRoyaleScene(app, opts),
+    ),
     GameMode(
         id="deathmatch", name="Deathmatch", description="Up to 16 players (bots)",
         category="singleplayer", color=(70, 130, 200),

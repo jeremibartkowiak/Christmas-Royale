@@ -64,7 +64,7 @@ class App:
     def _present(self) -> None:
         """Skaluje canvas 16:9 do okna z zachowaniem proporcji (czarne pasy na 16:10)."""
         _, origin, size = self._viewport()
-        scaled = pygame.transform.smoothscale(self.canvas, size)
+        scaled = self.canvas if size == (VIRTUAL_W, VIRTUAL_H) else pygame.transform.smoothscale(self.canvas, size)
         self.window.fill((0, 0, 0))
         self.window.blit(scaled, origin)
         pygame.display.flip()

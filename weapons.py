@@ -208,6 +208,21 @@ def make_assault_rifle(owner_pos: pygame.Vector2) -> Gun:
                spray_bloom=0.6, max_bloom=5.5, spray_recovery_time=0.4)
 
 
+# Pula broni do skrzyń (fabryka, waga szansy) - wartości tymczasowe do decyzji Użytkownika
+WEAPONS_POOL: list[tuple[callable, float]] = [
+    (make_pistol, 55.0),
+    (make_assault_rifle, 30.0),
+    (make_sniper, 15.0),
+]
+
+
+def roll_weapon(owner_pos: pygame.Vector2) -> Gun:
+    """Losuje broń z puli `WEAPONS_POOL` zgodnie z wagami."""
+    factories, weights = zip(*WEAPONS_POOL)
+    chosen = random.choices(factories, weights=weights, k=1)[0]
+    return chosen(owner_pos)
+
+
 class Inventory:
     """Plecak gracza: lista broni i jedna aktywna. Każda broń trzyma własny stan (amunicję itd.)."""
 

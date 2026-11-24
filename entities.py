@@ -46,11 +46,14 @@ class Player(GameObject):
     SIZE = 50
     SPEED = 400  # piksele na sekundę
 
-    def __init__(self, x: float, y: float, name: str = PLAYER_NAME, max_hp: float = 100):
+    def __init__(self, x: float, y: float, name: str = PLAYER_NAME, max_hp: float = 100,
+                 guns: list[Gun] | None = None):
         super().__init__(x, y, self.SIZE, self.SIZE, PLAYER_COLOR, max_hp=max_hp)
         self.name = name
         self.move_state = "idle"
-        self.inventory = Inventory([make_pistol(self.pos), make_sniper(self.pos)])
+        if guns is None:
+            guns = [make_pistol(self.pos), make_sniper(self.pos)]
+        self.inventory = Inventory(guns)
         self.name_tag = NameTag(name)
 
     @property

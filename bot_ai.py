@@ -37,9 +37,10 @@ class AIBot(Bot):
     STUCK_CHECK = 0.6  # co ile s sprawdza, czy utknął
 
     def __init__(self, name: str, x: float, y: float, bounds: pygame.Rect, max_hp: float = 100,
-                 difficulty: int = 3):
+                 difficulty: int = 3, start_empty: bool = False):
         pos = pygame.Vector2(x, y)
-        inventory = Inventory([make_pistol(pos), make_sniper(pos)])
+        guns = [] if start_empty else [make_pistol(pos), make_sniper(pos)]
+        inventory = Inventory(guns)
         super().__init__(name, x, y, max_hp=max_hp, inventory=inventory)
         preset = DIFFICULTY_PRESETS.get(difficulty, DIFFICULTY_PRESETS[3])
         self.speed: float = preset["speed"]
@@ -68,22 +69,47 @@ class AIBot(Bot):
         self.stuck_ref = pygame.Vector2(x, y)
 
     def act(self, dt: float, enemies: list[GameObject], obstacles: list[GameObject],
-            world: list[GameObject]):
+            world: list[GameObject], safe_center: pygame.Vector2 | None = None,
+            safe_radius: float | None = None, loot_target: pygame.Vector2 | None = None):
         """Jedna klatka AI. enemies: cele, które bot może atakować; obstacles: tylko przeszkody
         (linia widzenia); world: wszystko, co blokuje ruch i strzały. Zwraca wynik strzału lub None."""
-        self.gun.update(dt)
+        gun = self.gun
+        if gun is not None:
+            gun.update(dt)
         self.switch_left = max(0.0, self.switch_left - dt)
         self.think_left -= dt
         if self.think_left <= 0:
             self.think_left = self.THINK_INTERVAL
-            self._pick_target(enemies, obstacles)
+            if gun is not None:
+                self._pick_target(enemies, obstacles)
+            else:
+                self.target = None
         if self.target is not None and self.target not in enemies:
             self.target = None  # zginął albo dostał ochronę
 
         move = pygame.Vector2()
         dist = 0.0
         aim_error = 180.0
-        if self.target is not None:
+        outside_storm = (safe_center is not None and safe_radius is not None
+                         and self.pos.distance_to(safe_center) > safe_radius * 0.9)
+
+        if gun is None:
+            if loot_target is not None and not outside_storm:
+                to_loot = loot_target - self.pos
+                move = to_loot.normalize() if to_loot.length_squared() > 0 else pygame.Vector2()
+            elif outside_storm and safe_center is not None:
+                to_safe = safe_center - self.pos
+                move = to_safe.normalize() if to_safe.length_squared() > 0 else pygame.Vector2()
+            else:
+                move = self._wander_direction(dt)
+            if move.length_squared() > 0:
+                self._turn_toward(move, self.turn_speed * dt)
+        elif outside_storm and safe_center is not None and self.target is None:
+            to_safe = safe_center - self.pos
+            move = to_safe.normalize() if to_safe.length_squared() > 0 else pygame.Vector2()
+            if move.length_squared() > 0:
+                self._turn_toward(move, self.turn_speed * dt)
+        elif self.target is not None:
             to_target = self.target.pos - self.pos
             dist = to_target.length()
             direction = to_target / dist if dist > 0 else pygame.Vector2(1, 0)
@@ -98,6 +124,10 @@ class AIBot(Bot):
                 self.strafe_dir = -self.strafe_dir
                 self.strafe_left = random.uniform(0.7, 1.6)
             move += pygame.Vector2(-direction.y, direction.x) * self.strafe_dir * self.STRAFE_WEIGHT
+            if outside_storm and safe_center is not None:
+                to_safe = safe_center - self.pos
+                if to_safe.length_squared() > 0:
+                    move += to_safe.normalize() * 1.2
         else:
             move = self._wander_direction(dt)
             if move.length_squared() > 0:
@@ -108,15 +138,17 @@ class AIBot(Bot):
         self.move_and_collide(move * self.speed * dt, world)
         self._check_stuck(dt)
 
-        self._manage_weapon(dist)
+        if gun is not None:
+            self._manage_weapon(dist)
 
         fired = None
-        if (self.target is not None and self.reaction_left <= 0 and dist <= self.FIRE_RANGE
-                and aim_error <= self.aim_tolerance):
+        if (gun is not None and self.target is not None and self.reaction_left <= 0
+                and dist <= self.FIRE_RANGE and aim_error <= self.aim_tolerance):
             fired = self._try_shoot(dt, world)
         else:
             self.pause_left = max(0.0, self.pause_left - dt)
-        self.gun.aim_at(self.pos, self.pos + self.aim_dir)  # tylko wygląd (obrót broni)
+        if self.gun is not None:
+            self.gun.aim_at(self.pos, self.pos + self.aim_dir)  # tylko wygląd (obrót broni)
 
         if self.protection is not None:
             self.protection.update(dt, move.length_squared() > 0 or fired is not None)
@@ -156,7 +188,10 @@ class AIBot(Bot):
 
         if self.gun.reloading or self.switch_left > 0:
             return
-        preferred = 1 if dist >= self.SNIPER_MIN_RANGE else 0
+        # Gdy wszystkie bronie są w normie, dobierz najlepszą wg dystansu (jeśli ma więcej niż 1)
+        if len(self.inventory.guns) < 2:
+            return
+        preferred = 1 if (self.inventory.guns[1].name == "Sniper" and dist >= self.SNIPER_MIN_RANGE) else 0
         if preferred != self.inventory.index and self.inventory.guns[preferred].ammo > 0:
             self._select_weapon(preferred)
 

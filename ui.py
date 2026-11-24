@@ -368,3 +368,130 @@ class ProximityPrompt:
             midbottom=(target_rect.centerx - round(camera_offset.x), target_rect.top - self.GAP - round(camera_offset.y))
         )
         surface.blit(box, pos_rect)
+
+
+class BattleRoyaleHud:
+    """HUD dla Battle Royale: minimapa z fioletową strefą (lewy górny róg),
+    timer fazy strefy oraz licznik żywych i eliminacji (góra ekranu)."""
+
+    MAP_SIZE = 220
+    MAP_POS = (30, 30)
+    MAP_BG = (22, 28, 42)
+    MAP_OBSTACLE = (90, 96, 114)
+    MAP_BORDER = (255, 210, 80)
+
+    def __init__(self, bounds: pygame.Rect, obstacles: list):
+        self.bounds = bounds
+        self.scale_x = self.MAP_SIZE / bounds.width
+        self.scale_y = self.MAP_SIZE / bounds.height
+        self.timer_font = pygame.font.Font(None, 52)
+        self.timer_font.set_bold(True)
+        self.stat_font = pygame.font.Font(None, 32)
+        self.stat_font.set_bold(True)
+        # Statyczne tło minimapy (przeszkody rysowane raz dla wydajności)
+        self.map_bg = pygame.Surface((self.MAP_SIZE, self.MAP_SIZE))
+        self.map_bg.fill(self.MAP_BG)
+        for obj in obstacles:
+            r = obj.rect
+            mr = pygame.Rect(
+                round((r.left - bounds.left) * self.scale_x),
+                round((r.top - bounds.top) * self.scale_y),
+                max(2, round(r.width * self.scale_x)),
+                max(2, round(r.height * self.scale_y)),
+            )
+            pygame.draw.rect(self.map_bg, self.MAP_OBSTACLE, mr)
+        self._storm_surf = pygame.Surface((self.MAP_SIZE, self.MAP_SIZE))
+        self._storm_surf.set_colorkey((0, 0, 0))
+        self._storm_surf.set_alpha(120)
+
+    def _to_map(self, pos: pygame.Vector2) -> tuple[int, int]:
+        return (
+            round((pos.x - self.bounds.left) * self.scale_x),
+            round((pos.y - self.bounds.top) * self.scale_y),
+        )
+
+    def draw(self, surface: pygame.Surface, player_pos: pygame.Vector2, zone,
+             alive_count: int, eliminations: int) -> None:
+        self._draw_minimap(surface, player_pos, zone)
+        self._draw_top_stats(surface, zone, alive_count, eliminations)
+
+    def _draw_minimap(self, surface: pygame.Surface, player_pos: pygame.Vector2, zone) -> None:
+        mx, my = self.MAP_POS
+        map_img = self.map_bg.copy()
+        # Fioletowa strefa na minimapie
+        zc = self._to_map(zone.center)
+        zr = max(0, round(zone.radius * self.scale_x))
+        self._storm_surf.fill((135, 45, 205))
+        if zr > 0:
+            pygame.draw.circle(self._storm_surf, (0, 0, 0), zc, zr)
+        map_img.blit(self._storm_surf, (0, 0))
+        if zr > 0:
+            pygame.draw.circle(map_img, (195, 95, 255), zc, zr, width=2)
+        # Kolejna bezpieczna strefa (biały okrąg)
+        nc = self._to_map(zone.target_center)
+        nr = max(0, round(zone.target_radius * self.scale_x))
+        if nr > 0 and zone.state != "done":
+            pygame.draw.circle(map_img, (230, 235, 255), nc, nr, width=1)
+        # Pozycja gracza
+        pc = self._to_map(player_pos)
+        pygame.draw.circle(map_img, (40, 140, 255), pc, 5)
+        pygame.draw.circle(map_img, (255, 255, 255), pc, 5, width=1)
+        surface.blit(map_img, (mx, my))
+        pygame.draw.rect(surface, self.MAP_BORDER, (mx, my, self.MAP_SIZE, self.MAP_SIZE), width=2)
+
+    def _draw_top_stats(self, surface: pygame.Surface, zone, alive_count: int, eliminations: int) -> None:
+        secs = max(0, math.ceil(zone.time_left))
+        if zone.state == "done":
+            label, col = "FINAL ZONE", (220, 120, 255)
+        elif zone.state == "shrink":
+            label, col = f"STORM CLOSING  {secs // 60}:{secs % 60:02d}", (220, 120, 255)
+        else:
+            label, col = f"STORM IN  {secs // 60}:{secs % 60:02d}", (255, 255, 255)
+        timer = self.timer_font.render(label, True, col)
+        timer_rect = timer.get_rect(midtop=(VIRTUAL_W // 2, 18))
+        surface.blit(timer, timer_rect)
+
+        stats = self.stat_font.render(f"Alive: {alive_count}     Eliminations: {eliminations}", True, (255, 210, 80))
+        box = pygame.Surface((stats.get_width() + 28, stats.get_height() + 14), pygame.SRCALPHA)
+        pygame.draw.rect(box, (0, 0, 0, 150), box.get_rect(), border_radius=8)
+        box.blit(stats, (14, 7))
+        surface.blit(box, box.get_rect(midtop=(VIRTUAL_W // 2, timer_rect.bottom + 8)))
+
+
+class BattleRoyaleEndScreen:
+    """Ekran końcowy Battle Royale (Victory Royale lub Eliminated + miejsce i eliminacje)."""
+
+    def __init__(self):
+        self.title_font = pygame.font.Font(None, 86)
+        self.title_font.set_bold(True)
+        self.info_font = pygame.font.Font(None, 48)
+        btn_font = pygame.font.Font(None, 44)
+        cx = VIRTUAL_W // 2
+        self.again_button = Button(pygame.Rect(0, 0, 320, 72), "Play Again", btn_font,
+                                   (60, 175, 75), (85, 205, 100), border_radius=10)
+        self.again_button.rect.center = (cx - 180, VIRTUAL_H // 2 + 110)
+        self.menu_button = Button(pygame.Rect(0, 0, 320, 72), "Main Menu", btn_font,
+                                  (60, 65, 82), (90, 96, 120), border_radius=10)
+        self.menu_button.rect.center = (cx + 180, VIRTUAL_H // 2 + 110)
+
+    def button_at(self, pos: pygame.Vector2) -> str | None:
+        if self.again_button.hit(pos):
+            return "again"
+        if self.menu_button.hit(pos):
+            return "menu"
+        return None
+
+    def draw(self, surface: pygame.Surface, mouse_pos: pygame.Vector2, victory: bool,
+             place: int, total: int, eliminations: int) -> None:
+        overlay = pygame.Surface((VIRTUAL_W, VIRTUAL_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 175))
+        surface.blit(overlay, (0, 0))
+        title_text = "VICTORY ROYALE!" if victory else "YOU WERE ELIMINATED"
+        title_color = (255, 210, 60) if victory else (255, 95, 95)
+        title = self.title_font.render(title_text, True, title_color)
+        surface.blit(title, title.get_rect(center=(VIRTUAL_W // 2, VIRTUAL_H // 2 - 100)))
+        info = self.info_font.render(f"Place: #{place} / {total}     Eliminations: {eliminations}",
+                                     True, (255, 255, 255))
+        surface.blit(info, info.get_rect(center=(VIRTUAL_W // 2, VIRTUAL_H // 2 - 15)))
+        self.again_button.draw(surface, mouse_pos)
+        self.menu_button.draw(surface, mouse_pos)
