@@ -93,8 +93,11 @@ class Hud:
 
     def draw(self, surface: pygame.Surface, player: Player) -> None:
         gun = player.gun
-        text = f"Ammo   {gun.ammo} / {gun.magazine_size}"
-        color = HUD_COLOR if gun.ammo > 0 else HUD_EMPTY_COLOR
+        if gun is None:
+            text, color = "No weapon", HUD_EMPTY_COLOR
+        else:
+            text = f"Ammo   {gun.ammo} / {gun.magazine_size}"
+            color = HUD_COLOR if gun.ammo > 0 else HUD_EMPTY_COLOR
         image = self.font.render(text, True, color)
         surface.blit(image, image.get_rect(bottomright=(VIRTUAL_W - HUD_MARGIN, VIRTUAL_H - HUD_MARGIN)))
         self._draw_hp_bar(surface, player)
@@ -145,6 +148,8 @@ class InventoryBar:
 
     def draw(self, surface: pygame.Surface, inventory: Inventory) -> None:
         count = len(inventory.guns)
+        if count == 0:
+            return
         total_w = count * self.SLOT_SIZE + (count - 1) * self.SLOT_GAP
         x0 = (VIRTUAL_W - total_w) // 2
         total_h = self.SLOT_SIZE + self.KEY_GAP + self.KEY_SIZE[1]
@@ -316,3 +321,50 @@ class Crosshair:
         pygame.draw.line(surface, self.color, (cx, cy + gap), (cx, cy + gap + self.LINE_LEN), self.LINE_THICKNESS)
         pygame.draw.line(surface, self.color, (cx - gap, cy), (cx - gap - self.LINE_LEN, cy), self.LINE_THICKNESS)
         pygame.draw.line(surface, self.color, (cx + gap, cy), (cx + gap + self.LINE_LEN, cy), self.LINE_THICKNESS)
+
+
+class ProximityPrompt:
+    """Podpowiedź interakcji w świecie gry (w stylu Robloxa): [klawisz] akcja + pasek przytrzymania."""
+
+    BACK_COLOR = (15, 18, 28, 210)
+    BORDER_COLOR = (255, 210, 80)
+    KEY_COLOR = (245, 245, 245)
+    KEY_TEXT_COLOR = (25, 25, 32)
+    TEXT_COLOR = (255, 255, 255)
+    BAR_COLOR = (255, 210, 80)
+    BAR_BACK_COLOR = (55, 60, 78)
+    GAP = 14
+
+    def __init__(self, key_label: str = "E", action_text: str = "Open"):
+        self.key_label = key_label
+        self.action_text = action_text
+        self.key_font = pygame.font.Font(None, 28)
+        self.key_font.set_bold(True)
+        self.text_font = pygame.font.Font(None, 28)
+
+    def draw(self, surface: pygame.Surface, target_rect: pygame.Rect, camera_offset: pygame.Vector2,
+             progress: float = 0.0) -> None:
+        key_surf = self.key_font.render(self.key_label, True, self.KEY_TEXT_COLOR)
+        text_surf = self.text_font.render(self.action_text, True, self.TEXT_COLOR)
+        key_size = max(28, key_surf.get_width() + 12)
+        pad_x, pad_y, gap = 10, 8, 8
+        bar_h = 5 if progress > 0 else 0
+        w = pad_x * 2 + key_size + gap + text_surf.get_width()
+        h = pad_y * 2 + max(key_size, text_surf.get_height()) + (bar_h + 6 if bar_h else 0)
+        box = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(box, self.BACK_COLOR, box.get_rect(), border_radius=8)
+        pygame.draw.rect(box, self.BORDER_COLOR, box.get_rect(), width=2, border_radius=8)
+        key_rect = pygame.Rect(pad_x, pad_y, key_size, key_size)
+        pygame.draw.rect(box, self.KEY_COLOR, key_rect, border_radius=5)
+        box.blit(key_surf, key_surf.get_rect(center=key_rect.center))
+        box.blit(text_surf, text_surf.get_rect(midleft=(key_rect.right + gap, key_rect.centery)))
+        if bar_h:
+            bar_rect = pygame.Rect(pad_x, h - pad_y - bar_h + 2, w - pad_x * 2, bar_h)
+            pygame.draw.rect(box, self.BAR_BACK_COLOR, bar_rect, border_radius=3)
+            fill = bar_rect.copy()
+            fill.width = max(1, round(bar_rect.width * min(1.0, progress)))
+            pygame.draw.rect(box, self.BAR_COLOR, fill, border_radius=3)
+        pos_rect = box.get_rect(
+            midbottom=(target_rect.centerx - round(camera_offset.x), target_rect.top - self.GAP - round(camera_offset.y))
+        )
+        surface.blit(box, pos_rect)

@@ -4,6 +4,7 @@ import pygame
 
 from camera import Camera
 from entities import Player
+from loot import Chest, Pickup
 from objects import GameObject
 from scene import Scene
 from settings import VIRTUAL_W, VIRTUAL_H, GRID_STEP, GRID_COLOR, BACKGROUND_COLOR
@@ -22,6 +23,7 @@ class ArenaScene(Scene):
         self.camera: Camera
         self.player_alive = True
         self.objects: list[GameObject] = []
+        self.pickups: list[Pickup] = []
         self.tracers: list[Tracer] = []
         self.kill_feed = KillFeed()
         self.hud = Hud()
@@ -44,7 +46,10 @@ class ArenaScene(Scene):
         if not self.player_alive:
             self.handle_dead_event(event)
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
-            self.player.gun.start_reload()
+            if self.player.gun is not None:
+                self.player.gun.start_reload()
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_g:
+            self._drop_active_weapon()
         elif event.type == pygame.KEYDOWN and pygame.K_1 <= event.key <= pygame.K_9:
             self.player.inventory.select(event.key - pygame.K_1)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -81,16 +86,32 @@ class ArenaScene(Scene):
         elif obj in self.objects:
             self.objects.remove(obj)  # bot / niszczalny obiekt znika
 
+    def _free_drop_pos(self, preferred: pygame.Vector2, fallback: pygame.Vector2) -> pygame.Vector2:
+        """Unika upuszczania przedmiotu wewnątrz ściany/przeszkody."""
+        probe = pygame.Rect(0, 0, Pickup.FRAME_SIZE, Pickup.FRAME_SIZE)
+        probe.center = (round(preferred.x), round(preferred.y))
+        if any(o.collidable and probe.colliderect(o.rect) for o in self.objects):
+            return pygame.Vector2(fallback)
+        return preferred
+
+    def _drop_active_weapon(self) -> None:
+        gun = self.player.inventory.drop_active()
+        if gun is None:
+            return
+        drop_pos = self._free_drop_pos(self.player.pos + gun.direction * 45, fallback=self.player.pos)
+        self.pickups.append(Pickup(drop_pos.x, drop_pos.y, gun, pickup_delay=0.6))
+
     def _update_player(self, dt: float) -> None:
         keys = pygame.key.get_pressed()
         firing = pygame.mouse.get_pressed()[0]
         moving = bool(keys[pygame.K_w] or keys[pygame.K_a] or keys[pygame.K_s] or keys[pygame.K_d])
         self.player.update(dt, keys, self.objects)
         self.player.aim_at(self.mouse_world_pos())
-        self.player.gun.update(dt)
-        result = self.player.shoot(self._targets(), firing, self.fire_pressed)
-        if result:
-            self._handle_shot(result, self.player.gun, self.player)
+        if self.player.gun is not None:
+            self.player.gun.update(dt)
+            result = self.player.shoot(self._targets(), firing, self.fire_pressed)
+            if result:
+                self._handle_shot(result, self.player.gun, self.player)
         if self.player.protection is not None:
             self.player.protection.update(dt, moving or firing or self.fire_pressed)
 
@@ -107,12 +128,29 @@ class ArenaScene(Scene):
             return  # menu ESC wstrzymuje grę
         self.update_world(dt)
         self.fire_pressed = False
+        self._update_loot(dt)
         for tracer in self.tracers:
             tracer.update(dt)
         self.tracers = [t for t in self.tracers if t.alive]
         self.kill_feed.update(dt)
-        self.crosshair.update(dt, self.player.gun.current_spread(self.player.move_state))
+        spread = self.player.gun.current_spread(self.player.move_state) if self.player.gun is not None else 0.0
+        self.crosshair.update(dt, spread)
         self.camera.update(dt, self.player.pos)
+
+    def _update_loot(self, dt: float) -> None:
+        holding_e = self.player_alive and pygame.key.get_pressed()[pygame.K_e]
+        for obj in self.objects:
+            if isinstance(obj, Chest):
+                loot = obj.update_interaction(dt, self.player.pos, holding_e)
+                if loot is not None:
+                    drop_pos = self._free_drop_pos(obj.pos + pygame.Vector2(0, 65), fallback=obj.pos)
+                    self.pickups.append(Pickup(drop_pos.x, drop_pos.y, loot, pickup_delay=0.25))
+        for pickup in list(self.pickups):
+            pickup.update(dt)
+            if self.player_alive and pickup.can_pickup and self.player.rect.colliderect(pickup.rect):
+                if isinstance(pickup.item, Gun):
+                    self.player.inventory.add(pickup.item)
+                self.pickups.remove(pickup)
 
     # --- rysowanie ---
     def _draw_grid(self, surface: pygame.Surface, offset: pygame.Vector2) -> None:
@@ -134,10 +172,15 @@ class ArenaScene(Scene):
         offset = self.camera.offset
         self.draw_floor(surface, offset)
         self._draw_grid(surface, offset)
+        for pickup in self.pickups:
+            pickup.draw(surface, offset)
         for obj in self.objects:
             obj.draw(surface, offset)
         if self.player_alive:
             self.player.draw(surface, offset)
+            for obj in self.objects:
+                if isinstance(obj, Chest):
+                    obj.draw_prompt(surface, offset, self.player.pos)
         for tracer in self.tracers:
             tracer.draw(surface, offset)
         self.hud.draw(surface, self.player)

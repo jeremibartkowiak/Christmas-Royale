@@ -199,6 +199,15 @@ def make_sniper(owner_pos: pygame.Vector2) -> Gun:
                spread_idle=0.0, spread_walk=8.0, spray_pattern=[], spray_bloom=0.0)
 
 
+def make_assault_rifle(owner_pos: pygame.Vector2) -> Gun:
+    # Tymczasowe statystyki testowe do decyzji Użytkownika
+    pattern = [0.0, -1.2, -2.5, -1.0, 1.8, 3.8, 2.5, -1.5, -4.0, -2.0, 2.0, 4.5, 1.5, -2.5]
+    return Gun(owner_pos, name="Assault Rifle", automatic=True, fire_rate=9.0, magazine_size=30,
+               reload_time=2.0, damage=16, length=82, color=(90, 120, 150), points=14,
+               spread_idle=0.0, spread_walk=4.0, spray_pattern=pattern,
+               spray_bloom=0.6, max_bloom=5.5, spray_recovery_time=0.4)
+
+
 class Inventory:
     """Plecak gracza: lista broni i jedna aktywna. Każda broń trzyma własny stan (amunicję itd.)."""
 
@@ -207,11 +216,32 @@ class Inventory:
         self.index = 0
 
     @property
-    def active(self) -> Gun:
+    def active(self) -> Gun | None:
+        if not self.guns:
+            return None
         return self.guns[self.index]
+
+    def add(self, gun: Gun) -> None:
+        self.guns.append(gun)
+        if len(self.guns) == 1:
+            self.index = 0
+
+    def drop_active(self) -> Gun | None:
+        """Usuwa aktywną broń z plecaka i ją zwraca (lub None, jeśli plecak jest pusty)."""
+        if not self.guns:
+            return None
+        gun = self.guns.pop(self.index)
+        gun.cancel_reload()
+        gun.reset_spray()
+        if self.guns:
+            self.index = min(self.index, len(self.guns) - 1)
+        else:
+            self.index = 0
+        return gun
 
     def select(self, index: int) -> None:
         if 0 <= index < len(self.guns) and index != self.index:
-            self.active.cancel_reload()  # zmiana broni przerywa przeładowanie
-            self.active.reset_spray()
+            if self.active is not None:
+                self.active.cancel_reload()  # zmiana broni przerywa przeładowanie
+                self.active.reset_spray()
             self.index = index

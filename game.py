@@ -5,9 +5,10 @@ import pygame
 from arena import ArenaScene
 from camera import Camera
 from entities import Bot, Player
+from loot import Chest
 from objects import Obstacle
 from ui import EliminatedScreen
-from weapons import Gun
+from weapons import Gun, make_assault_rifle
 
 
 class GameScene(ArenaScene):
@@ -24,6 +25,7 @@ class GameScene(ArenaScene):
             Bot("Bot1", 400, -250), Bot("Bot2", -500, 200), Bot("Bot3", 300, 450),
             Bot("Bot4", -700, -150, gun=Gun(pygame.Vector2(-700, -150), name="Pistol", fire_rate=1.0,
                                            magazine_size=9999, damage=10)),
+            Chest(0, -180, make_assault_rifle(pygame.Vector2(0, -180))),
             Obstacle(-300, -300, 400, 40),
             Obstacle(250, 100, 40, 300),
             Obstacle(-150, 350, 100, 100, color=(120, 90, 60)),

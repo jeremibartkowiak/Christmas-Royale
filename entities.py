@@ -54,7 +54,7 @@ class Player(GameObject):
         self.name_tag = NameTag(name)
 
     @property
-    def gun(self) -> Gun:
+    def gun(self) -> Gun | None:
         return self.inventory.active
 
     def update(self, dt: float, keys, solids: list[GameObject]) -> None:
@@ -70,12 +70,16 @@ class Player(GameObject):
         self.move_and_collide(direction * self.SPEED * dt, solids)
 
     def aim_at(self, world_target: pygame.Vector2) -> None:
-        self.gun.aim_at(self.pos, world_target)
+        if self.gun is not None:
+            self.gun.aim_at(self.pos, world_target)
 
     def shoot(self, targets: list[GameObject], trigger_held: bool, trigger_pressed: bool):
+        if self.gun is None:
+            return None
         return self.gun.fire(self, targets, trigger_held, trigger_pressed, move_state=self.move_state)
 
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
         super().draw(surface, camera_offset)
-        self.gun.draw(surface, camera_offset)
+        if self.gun is not None:
+            self.gun.draw(surface, camera_offset)
         self.name_tag.draw(surface, self.rect, camera_offset)
