@@ -27,15 +27,17 @@ class DeathmatchScene(ArenaScene):
     RESPAWN_TIME = 2.5  # s do odrodzenia po śmierci
     FLOOR_COLOR = (34, 40, 56)
 
-    def __init__(self, app):
+    def __init__(self, app, options: dict[str, float] | None = None):
         super().__init__(app)
+        opts = options or {}
+        self.bot_difficulty = int(opts.get("difficulty", 3))
         self.arena: ArenaMap = make_dm_arena()
         self.objects = self.arena.build_obstacles()
         self.obstacles: list[GameObject] = list(self.objects)  # same przeszkody (linia widzenia botów)
         self.participants = [Participant(PLAYER_NAME, PLAYER_COLOR, is_player=True)]
         self.participants += [Participant(f"Bot{i}", BOT_COLOR) for i in range(1, self.PLAYER_COUNT)]
         self.by_name = {p.name: p for p in self.participants}
-        self.time_left = self.MATCH_TIME
+        self.time_left = float(opts.get("minutes", self.MATCH_TIME / 60.0)) * 60.0
         self.match_hud = MatchHud()
         self.respawn_font = pygame.font.Font(None, 64)
         self.player_respawn_left = 0.0
@@ -72,7 +74,9 @@ class DeathmatchScene(ArenaScene):
             self.camera.pos = pygame.Vector2(self.player.pos)
 
     def _spawn_bot(self, name: str) -> None:
-        self.objects.append(AIBot(name, *self._pick_spawn(), bounds=self.arena.bounds.inflate(-200, -200)))
+        self.objects.append(AIBot(name, *self._pick_spawn(),
+                                  bounds=self.arena.bounds.inflate(-200, -200),
+                                  difficulty=self.bot_difficulty))
 
     # --- śmierć i punkty ---
     def _on_death(self, obj: GameObject, gun: Gun, killer: GameObject) -> None:

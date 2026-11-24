@@ -31,9 +31,9 @@ class App:
     def go_to_menu(self) -> None:
         self.change_scene(MenuScene(self))
 
-    def start_game(self, mode: GameMode) -> None:
+    def start_game(self, mode: GameMode, options: dict[str, float] | None = None) -> None:
         """Ekran wczytywania, a po nim scena wybranego trybu."""
-        self.change_scene(LoadingScene(self, mode))
+        self.change_scene(LoadingScene(self, mode, options or {}))
 
     def quit(self) -> None:
         self.running = False

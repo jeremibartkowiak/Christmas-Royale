@@ -22,23 +22,47 @@ CATEGORIES: list[tuple[str, str]] = [
 ]
 
 
+DIFFICULTY_LABELS = {1: "Very Easy", 2: "Easy", 3: "Normal", 4: "Hard", 5: "Insane"}
+
+
+@dataclass(frozen=True)
+class ModeOption:
+    """Opcja trybu gry wyświetlana jako suwak po wybraniu trybu w menu Play."""
+    key: str
+    label: str
+    min_value: float
+    max_value: float
+    step: float
+    default: float
+    format_value: Callable[[float], str] = lambda v: f"{v:g}"
+
+
 @dataclass(frozen=True)
 class GameMode:
     id: str
     name: str
     description: str
     category: str  # id z CATEGORIES
-    create_scene: Callable[[App], Scene]
+    create_scene: Callable[[App, dict[str, float]], Scene]
     color: tuple[int, int, int] = (90, 90, 110)  # placeholder obrazka (później ścieżka do .png)
+    options: tuple[ModeOption, ...] = ()
 
 
 MODES: list[GameMode] = [
-    GameMode(id="deathmatch", name="Deathmatch", description="10 min, up to 16 players (bots)",
-             category="singleplayer", color=(70, 130, 200),
-             create_scene=lambda app: DeathmatchScene(app)),
+    GameMode(
+        id="deathmatch", name="Deathmatch", description="Up to 16 players (bots)",
+        category="singleplayer", color=(70, 130, 200),
+        options=(
+            ModeOption("difficulty", "Bot Difficulty", 1, 5, 1, 3,
+                       lambda v: DIFFICULTY_LABELS.get(int(v), str(int(v)))),
+            ModeOption("minutes", "Match Time", 1, 15, 1, 10,
+                       lambda v: f"{int(v)} min"),
+        ),
+        create_scene=lambda app, opts: DeathmatchScene(app, opts),
+    ),
     GameMode(id="debug", name="Debug", description="Test arena with bots",
              category="singleplayer", color=(190, 80, 80),
-             create_scene=lambda app: GameScene(app)),
+             create_scene=lambda app, _opts: GameScene(app)),
 ]
 
 

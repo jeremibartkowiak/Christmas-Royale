@@ -19,9 +19,10 @@ class LoadingScene(Scene):
     IMAGE_SIZE = (720, 405)
     BAR_SIZE = (900, 14)
 
-    def __init__(self, app, mode: GameMode):
+    def __init__(self, app, mode: GameMode, options: dict[str, float] | None = None):
         super().__init__(app)
         self.mode = mode
+        self.options = options or {}
         self.time = 0.0
         self.label_font = pygame.font.Font(None, 54)
         self.label_font.set_bold(True)
@@ -37,7 +38,7 @@ class LoadingScene(Scene):
     def update(self, dt: float) -> None:
         self.time += dt
         if self.time >= self.LOAD_TIME:
-            self.app.change_scene(self.mode.create_scene(self.app))
+            self.app.change_scene(self.mode.create_scene(self.app, self.options))
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill(self.BG_COLOR)

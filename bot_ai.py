@@ -11,29 +11,46 @@ from objects import GameObject, SpawnProtection
 from weapons import Inventory, make_pistol, make_sniper, raycast
 
 
+# Poziomy trudności botów (1 = Very Easy ... 5 = Insane; 3 = domyślny Normal)
+DIFFICULTY_PRESETS: dict[int, dict] = {
+    1: {"speed": 210, "sight_range": 750, "reaction_time": 1.10, "turn_speed": 100,
+        "aim_tolerance": 22, "aim_spread": 15, "sniper_spread": 20, "burst_shots": (1, 2), "burst_pause": (1.2, 2.2)},
+    2: {"speed": 255, "sight_range": 900, "reaction_time": 0.75, "turn_speed": 150,
+        "aim_tolerance": 16, "aim_spread": 11, "sniper_spread": 14, "burst_shots": (1, 3), "burst_pause": (0.8, 1.6)},
+    3: {"speed": 300, "sight_range": 1100, "reaction_time": 0.45, "turn_speed": 220,
+        "aim_tolerance": 12, "aim_spread": 7, "sniper_spread": 9, "burst_shots": (2, 4), "burst_pause": (0.5, 1.1)},
+    4: {"speed": 345, "sight_range": 1250, "reaction_time": 0.30, "turn_speed": 300,
+        "aim_tolerance": 9, "aim_spread": 4.5, "sniper_spread": 6, "burst_shots": (2, 5), "burst_pause": (0.35, 0.8)},
+    5: {"speed": 385, "sight_range": 1400, "reaction_time": 0.18, "turn_speed": 380,
+        "aim_tolerance": 6, "aim_spread": 2.5, "sniper_spread": 3.5, "burst_shots": (3, 5), "burst_pause": (0.25, 0.55)},
+}
+
+
 class AIBot(Bot):
-    SPEED = 300  # gracz ma 400
-    SIGHT_RANGE = 1100  # w jakiej odległości bot zauważa przeciwnika (musi być widoczny, bez ściany)
     FIRE_RANGE = 800
     PREFERRED_MIN = 250  # bliżej niż to - bot się cofa
     PREFERRED_MAX = 550  # dalej niż to - bot podchodzi
     SNIPER_MIN_RANGE = 520  # powyżej tego dystansu bot preferuje Snipera
     SWITCH_COOLDOWN = 1.2  # min. odstęp między zmianami broni w walce (s)
     STRAFE_WEIGHT = 0.8  # siła ruchu bokiem (uniki)
-    REACTION_TIME = 0.45  # s od zauważenia celu do pierwszego strzału
-    TURN_SPEED = 220  # stopnie/s - jak szybko bot obraca celownik
-    AIM_TOLERANCE = 12  # stopnie - maks. błąd celowania, przy którym bot strzela
-    AIM_SPREAD = 7  # stopnie losowego rozrzutu przy każdym strzale
-    SNIPER_SPREAD = 9  # większy rozrzut dla Snipera, żeby bot nie zabijał za łatwo na hita
-    BURST_SHOTS = (2, 4)  # liczba strzałów w serii (min, max)
-    BURST_PAUSE = (0.5, 1.1)  # przerwa między seriami (s)
     THINK_INTERVAL = 0.2  # co ile s bot szuka celu
     STUCK_CHECK = 0.6  # co ile s sprawdza, czy utknął
 
-    def __init__(self, name: str, x: float, y: float, bounds: pygame.Rect, max_hp: float = 100):
+    def __init__(self, name: str, x: float, y: float, bounds: pygame.Rect, max_hp: float = 100,
+                 difficulty: int = 3):
         pos = pygame.Vector2(x, y)
         inventory = Inventory([make_pistol(pos), make_sniper(pos)])
         super().__init__(name, x, y, max_hp=max_hp, inventory=inventory)
+        preset = DIFFICULTY_PRESETS.get(difficulty, DIFFICULTY_PRESETS[3])
+        self.speed: float = preset["speed"]
+        self.sight_range: float = preset["sight_range"]
+        self.reaction_time: float = preset["reaction_time"]
+        self.turn_speed: float = preset["turn_speed"]
+        self.aim_tolerance: float = preset["aim_tolerance"]
+        self.aim_spread: float = preset["aim_spread"]
+        self.sniper_spread: float = preset["sniper_spread"]
+        self.burst_shots: tuple[int, int] = preset["burst_shots"]
+        self.burst_pause: tuple[float, float] = preset["burst_pause"]
         self.protection = SpawnProtection()
         self.bounds = bounds  # wnętrze areny - zakres losowania punktów patrolu
         self.target: GameObject | None = None
@@ -71,7 +88,7 @@ class AIBot(Bot):
             dist = to_target.length()
             direction = to_target / dist if dist > 0 else pygame.Vector2(1, 0)
             self.reaction_left = max(0.0, self.reaction_left - dt)
-            aim_error = self._turn_toward(direction, self.TURN_SPEED * dt)
+            aim_error = self._turn_toward(direction, self.turn_speed * dt)
             if dist > self.PREFERRED_MAX:
                 move += direction
             elif dist < self.PREFERRED_MIN:
@@ -84,18 +101,18 @@ class AIBot(Bot):
         else:
             move = self._wander_direction(dt)
             if move.length_squared() > 0:
-                self._turn_toward(move, self.TURN_SPEED * dt)
+                self._turn_toward(move, self.turn_speed * dt)
 
         if move.length_squared() > 0:
             move.normalize_ip()
-        self.move_and_collide(move * self.SPEED * dt, world)
+        self.move_and_collide(move * self.speed * dt, world)
         self._check_stuck(dt)
 
         self._manage_weapon(dist)
 
         fired = None
         if (self.target is not None and self.reaction_left <= 0 and dist <= self.FIRE_RANGE
-                and aim_error <= self.AIM_TOLERANCE):
+                and aim_error <= self.aim_tolerance):
             fired = self._try_shoot(dt, world)
         else:
             self.pause_left = max(0.0, self.pause_left - dt)
@@ -146,14 +163,14 @@ class AIBot(Bot):
     # --- cel i celowanie ---
     def _pick_target(self, enemies: list[GameObject], obstacles: list[GameObject]) -> None:
         """Wybiera najbliższego przeciwnika w zasięgu wzroku, którego nie zasłania ściana."""
-        in_range = [e for e in enemies if e.pos.distance_to(self.pos) <= self.SIGHT_RANGE]
+        in_range = [e for e in enemies if e.pos.distance_to(self.pos) <= self.sight_range]
         in_range.sort(key=lambda e: e.pos.distance_squared_to(self.pos))
         best = next((e for e in in_range if self._visible(e, obstacles)), None)
         if best is not self.target:
             self.target = best
             self.burst_left = 0
             if best is not None:
-                self.reaction_left = self.REACTION_TIME * random.uniform(0.8, 1.3)
+                self.reaction_left = self.reaction_time * random.uniform(0.8, 1.3)
 
     def _visible(self, other: GameObject, obstacles: list[GameObject]) -> bool:
         offset = other.pos - self.pos
@@ -176,9 +193,9 @@ class AIBot(Bot):
         if self.pause_left > 0:
             return None
         if self.burst_left <= 0:
-            self.burst_left = random.randint(*self.BURST_SHOTS)
+            self.burst_left = random.randint(*self.burst_shots)
         true_dir = self.gun.direction
-        spread = self.SNIPER_SPREAD if self.gun.name == "Sniper" else self.AIM_SPREAD
+        spread = self.sniper_spread if self.gun.name == "Sniper" else self.aim_spread
         self.gun.direction = self.aim_dir.rotate(random.uniform(-spread, spread))
         self.gun.pos = self.pos + self.aim_dir * self.gun.HOLD_DISTANCE
         result = self.gun.fire(self, world, True, True, apply_spread=False)
@@ -186,7 +203,7 @@ class AIBot(Bot):
         if result:
             self.burst_left -= 1
             if self.burst_left <= 0:
-                self.pause_left = random.uniform(*self.BURST_PAUSE)
+                self.pause_left = random.uniform(*self.burst_pause)
         return result
 
     # --- ruch ---
