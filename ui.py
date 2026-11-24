@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 import pygame
 
 from settings import (VIRTUAL_W, VIRTUAL_H, HUD_FONT_SIZE, HUD_MARGIN, HUD_COLOR, HUD_EMPTY_COLOR,
-                      HP_BAR_SIZE, HP_BAR_SLANT, HP_FONT_SIZE, HP_BAR_COLOR, HP_BAR_BACK_COLOR)
+                      HP_BAR_SIZE, HP_BAR_SLANT, HP_FONT_SIZE, HP_BAR_COLOR, HP_BAR_BACK_COLOR,
+                      CROSSHAIR_COLOR)
 from scoring import ranking
 from widgets import Button
 
@@ -286,3 +287,32 @@ class MatchHud:
             pygame.draw.rect(surface, border, rect, width=3, border_radius=6)
             points = self.points_font.render(str(p.points), True, self.ACCENT if p.is_player else (255, 255, 255))
             surface.blit(points, points.get_rect(midtop=(rect.centerx, rect.bottom + 4)))
+
+
+class Crosshair:
+    """Dynamiczny celownik (4 kreski + kropka na środku), który rozszerza się zależnie od spreadu."""
+
+    BASE_GAP = 6.0  # minimalny odstęp kresek od środka przy spread = 0° (px)
+    PX_PER_DEG = 6.0  # ile pikseli na 1° rozrzutu
+    LINE_LEN = 12
+    LINE_THICKNESS = 3
+    DOT_RADIUS = 2
+    SMOOTH_SPEED = 18.0  # szybkość płynnego rozsuwania/zwężania kresek
+
+    def __init__(self, color: tuple[int, int, int] = CROSSHAIR_COLOR):
+        self.color = color
+        self.display_spread = 0.0
+
+    def update(self, dt: float, target_spread: float) -> None:
+        t = 1 - math.exp(-self.SMOOTH_SPEED * dt)
+        self.display_spread += (target_spread - self.display_spread) * t
+
+    def draw(self, surface: pygame.Surface, pos: pygame.Vector2) -> None:
+        cx, cy = round(pos.x), round(pos.y)
+        gap = round(self.BASE_GAP + self.display_spread * self.PX_PER_DEG)
+        pygame.draw.circle(surface, self.color, (cx, cy), self.DOT_RADIUS)
+        # 4 kreski: góra, dół, lewo, prawo
+        pygame.draw.line(surface, self.color, (cx, cy - gap), (cx, cy - gap - self.LINE_LEN), self.LINE_THICKNESS)
+        pygame.draw.line(surface, self.color, (cx, cy + gap), (cx, cy + gap + self.LINE_LEN), self.LINE_THICKNESS)
+        pygame.draw.line(surface, self.color, (cx - gap, cy), (cx - gap - self.LINE_LEN, cy), self.LINE_THICKNESS)
+        pygame.draw.line(surface, self.color, (cx + gap, cy), (cx + gap + self.LINE_LEN, cy), self.LINE_THICKNESS)

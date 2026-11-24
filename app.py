@@ -25,6 +25,7 @@ class App:
 
     # --- sceny ---
     def change_scene(self, scene: Scene) -> None:
+        pygame.mouse.set_visible(True)  # każda nowa scena zaczyna z widocznym kursorem
         self.scene = scene
 
     def go_to_menu(self) -> None:

@@ -181,7 +181,7 @@ class AIBot(Bot):
         spread = self.SNIPER_SPREAD if self.gun.name == "Sniper" else self.AIM_SPREAD
         self.gun.direction = self.aim_dir.rotate(random.uniform(-spread, spread))
         self.gun.pos = self.pos + self.aim_dir * self.gun.HOLD_DISTANCE
-        result = self.gun.fire(self, world, True, True)
+        result = self.gun.fire(self, world, True, True, apply_spread=False)
         self.gun.direction = true_dir
         if result:
             self.burst_left -= 1

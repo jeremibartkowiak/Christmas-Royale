@@ -49,6 +49,7 @@ class Player(GameObject):
     def __init__(self, x: float, y: float, name: str = PLAYER_NAME, max_hp: float = 100):
         super().__init__(x, y, self.SIZE, self.SIZE, PLAYER_COLOR, max_hp=max_hp)
         self.name = name
+        self.move_state = "idle"
         self.inventory = Inventory([make_pistol(self.pos), make_sniper(self.pos)])
         self.name_tag = NameTag(name)
 
@@ -63,13 +64,16 @@ class Player(GameObject):
         )
         if direction.length_squared() > 0:
             direction.normalize_ip()  # brak szybszego ruchu po skosie
+            self.move_state = "walk"
+        else:
+            self.move_state = "idle"
         self.move_and_collide(direction * self.SPEED * dt, solids)
 
     def aim_at(self, world_target: pygame.Vector2) -> None:
         self.gun.aim_at(self.pos, world_target)
 
     def shoot(self, targets: list[GameObject], trigger_held: bool, trigger_pressed: bool):
-        return self.gun.fire(self, targets, trigger_held, trigger_pressed)
+        return self.gun.fire(self, targets, trigger_held, trigger_pressed, move_state=self.move_state)
 
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
         super().draw(surface, camera_offset)

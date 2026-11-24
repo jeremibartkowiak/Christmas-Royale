@@ -7,7 +7,7 @@ from entities import Player
 from objects import GameObject
 from scene import Scene
 from settings import VIRTUAL_W, VIRTUAL_H, GRID_STEP, GRID_COLOR, BACKGROUND_COLOR
-from ui import EscMenu, Hud, KillFeed
+from ui import Crosshair, EscMenu, Hud, KillFeed
 from weapons import Gun, Tracer
 
 
@@ -25,6 +25,7 @@ class ArenaScene(Scene):
         self.tracers: list[Tracer] = []
         self.kill_feed = KillFeed()
         self.hud = Hud()
+        self.crosshair = Crosshair()
         self.esc_menu = EscMenu()
         self.esc_menu_open = False
         self.fire_pressed = False
@@ -97,7 +98,11 @@ class ArenaScene(Scene):
     def update_world(self, dt: float) -> None:
         raise NotImplementedError
 
+    def _shows_crosshair(self) -> bool:
+        return self.player_alive and not self.esc_menu_open
+
     def update(self, dt: float) -> None:
+        pygame.mouse.set_visible(not self._shows_crosshair())
         if self.esc_menu_open:
             return  # menu ESC wstrzymuje grę
         self.update_world(dt)
@@ -106,6 +111,7 @@ class ArenaScene(Scene):
             tracer.update(dt)
         self.tracers = [t for t in self.tracers if t.alive]
         self.kill_feed.update(dt)
+        self.crosshair.update(dt, self.player.gun.current_spread(self.player.move_state))
         self.camera.update(dt, self.player.pos)
 
     # --- rysowanie ---
@@ -138,5 +144,7 @@ class ArenaScene(Scene):
         self.kill_feed.draw(surface)
         mouse = self.app.mouse_virtual_pos()
         self.draw_overlay(surface, mouse)
+        if self._shows_crosshair():
+            self.crosshair.draw(surface, mouse)
         if self.esc_menu_open:
             self.esc_menu.draw(surface, mouse)

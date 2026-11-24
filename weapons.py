@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import random
 from typing import TYPE_CHECKING
 
 import pygame
@@ -62,12 +63,18 @@ class Gun:
     def __init__(self, owner_pos: pygame.Vector2, name: str = "Pistol", automatic: bool = True,
                  fire_rate: float = 6.0, magazine_size: int = 12, reload_time: float = 1.5,
                  damage: float = 20, length: int = 60, color: tuple[int, int, int] = (200, 200, 200),
-                 points: int = 0):
+                 points: int = 0, spread_idle: float = 0.0, spread_walk: float = 0.0,
+                 spray_pattern: list[float] | None = None, spray_bloom: float = 0.0,
+                 max_bloom: float = 5.0, spray_recovery_time: float = 0.35):
         """name: nazwa pokazywana w kill feedzie.
         automatic: True = ogień ciągły po przytrzymaniu LPM, False = jeden strzał na kliknięcie.
         fire_rate: strzały na sekundę. magazine_size: pojemność magazynka. reload_time: sekundy.
         damage: obrażenia zadawane jednym strzałem. length/color: wygląd placeholdera.
-        points: punkty w Deathmatchu za zabicie tą bronią."""
+        points: punkty w Deathmatchu za zabicie tą bronią.
+        spread_idle / spread_walk: bazowy losowy rozrzut (stopnie) w staniu i chodzeniu.
+        spray_pattern: lista kątów odchylenia (stopnie, lewo/prawo) dla kolejnych strzałów.
+        spray_bloom: przyrost losowego rozrzutu na strzał po pierwszym strzale (do `max_bloom`).
+        spray_recovery_time: czas bez strzału (s) resetujący serię i bloom."""
         self.name = name
         self.length = length
         self.damage = damage
@@ -76,8 +83,17 @@ class Gun:
         self.fire_rate = fire_rate
         self.magazine_size = magazine_size
         self.reload_time = reload_time
+        self.spread_idle = spread_idle
+        self.spread_walk = spread_walk
+        self.spray_pattern = list(spray_pattern) if spray_pattern else []
+        self.spray_bloom = spray_bloom
+        self.max_bloom = max_bloom
+        self.spray_recovery_time = spray_recovery_time
         self.ammo = magazine_size
         self.reload_left = 0.0  # >0 = trwa przeładowanie
+        self.shot_index = 0
+        self.since_last_shot = 0.0
+        self.current_bloom = 0.0
         self.pos = pygame.Vector2(owner_pos)
         self.direction = pygame.Vector2(1, 0)
         self.angle = 0.0  # stopnie, 0 = w prawo
@@ -91,11 +107,28 @@ class Gun:
     def reloading(self) -> bool:
         return self.reload_left > 0
 
+    def reset_spray(self) -> None:
+        self.shot_index = 0
+        self.current_bloom = 0.0
+
     def cancel_reload(self) -> None:
         self.reload_left = 0.0
 
+    def current_spread(self, move_state: str = "idle") -> float:
+        """Aktualny kąt losowego rozrzutu (w stopniach) dla podanego stanu ruchu."""
+        base = self.spread_walk if move_state == "walk" else self.spread_idle
+        return base + self.current_bloom
+
     def update(self, dt: float) -> None:
         self.cooldown = max(0.0, self.cooldown - dt)
+        self.since_last_shot += dt
+        if self.since_last_shot >= self.spray_recovery_time:
+            self.shot_index = 0
+            if self.spray_recovery_time > 0:
+                decay = (self.max_bloom / self.spray_recovery_time) * dt
+                self.current_bloom = max(0.0, self.current_bloom - decay)
+            else:
+                self.current_bloom = 0.0
         if self.reloading:
             self.reload_left -= dt
             if self.reload_left <= 0:
@@ -105,9 +138,17 @@ class Gun:
     def start_reload(self) -> None:
         if not self.reloading and self.ammo < self.magazine_size:
             self.reload_left = self.reload_time
+            self.reset_spray()
+
+    def _next_pattern_angle(self) -> float:
+        if not self.spray_pattern:
+            return 0.0
+        idx = min(self.shot_index, len(self.spray_pattern) - 1)
+        return self.spray_pattern[idx]
 
     def fire(self, owner: GameObject, targets: list[GameObject], trigger_held: bool,
-             trigger_pressed: bool) -> tuple[Tracer, GameObject | None] | None:
+             trigger_pressed: bool, move_state: str = "idle", apply_spread: bool = True
+             ) -> tuple[Tracer, GameObject | None] | None:
         """Oddaje strzał, jeśli spust jest wciśnięty (zależnie od trybu), jest amunicja, nie trwa
         przeładowanie i minął cooldown. Zwraca (efekt linii, trafiony obiekt) lub None."""
         wants_fire = trigger_held if self.automatic else trigger_pressed
@@ -115,7 +156,16 @@ class Gun:
             return None
         self.ammo -= 1
         self.cooldown = 1.0 / self.fire_rate
-        hit_point, hit_obj = raycast(owner.pos, self.direction, self.RANGE, targets, ignore=owner)
+        fire_dir = self.direction
+        if apply_spread:
+            pattern_angle = self._next_pattern_angle()
+            spread = self.current_spread(move_state)
+            random_offset = random.uniform(-spread, spread) if spread > 0 else 0.0
+            fire_dir = self.direction.rotate(pattern_angle + random_offset)
+            self.shot_index += 1
+            self.since_last_shot = 0.0
+            self.current_bloom = min(self.max_bloom, self.current_bloom + self.spray_bloom)
+        hit_point, hit_obj = raycast(owner.pos, fire_dir, self.RANGE, targets, ignore=owner)
         muzzle = self.pos + self.direction * (self.length / 2)
         return Tracer(muzzle, hit_point), hit_obj
 
@@ -134,13 +184,19 @@ class Gun:
 
 
 def make_pistol(owner_pos: pygame.Vector2) -> Gun:
+    # Pierwszy strzał celny (0°), kolejne wchodzą w spray pattern (lewo-prawo) i lekki bloom
+    pattern = [0.0, -1.5, -3.0, -1.5, 1.5, 3.5, 2.0, -2.0, -4.0, -1.5, 2.5, 4.0]
     return Gun(owner_pos, name="Pistol", automatic=True, fire_rate=6.0, magazine_size=12,
-               reload_time=1.5, damage=20, points=16)
+               reload_time=1.5, damage=20, points=16,
+               spread_idle=0.0, spread_walk=3.0, spray_pattern=pattern,
+               spray_bloom=0.8, max_bloom=4.5, spray_recovery_time=0.35)
 
 
 def make_sniper(owner_pos: pygame.Vector2) -> Gun:
+    # Sniper: 0° w staniu, duży rozrzut podczas chodzenia
     return Gun(owner_pos, name="Sniper", automatic=False, fire_rate=1.0, magazine_size=1,
-               reload_time=3.0, damage=100, length=100, color=(120, 140, 120), points=12)
+               reload_time=3.0, damage=100, length=100, color=(120, 140, 120), points=12,
+               spread_idle=0.0, spread_walk=8.0, spray_pattern=[], spray_bloom=0.0)
 
 
 class Inventory:
@@ -157,4 +213,5 @@ class Inventory:
     def select(self, index: int) -> None:
         if 0 <= index < len(self.guns) and index != self.index:
             self.active.cancel_reload()  # zmiana broni przerywa przeładowanie
+            self.active.reset_spray()
             self.index = index

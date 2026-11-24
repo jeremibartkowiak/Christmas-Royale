@@ -19,3 +19,4 @@ HP_BAR_COLOR = (76, 175, 60)  # zawsze zielony, niezależnie od ilości HP
 HP_BAR_BACK_COLOR = (20, 45, 22)
 PLAYER_COLOR = (40, 90, 255)
 BOT_COLOR = (50, 200, 70)
+CROSSHAIR_COLOR = (255, 40, 200)  # jaskrawy róż do testowania celownika
