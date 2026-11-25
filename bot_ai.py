@@ -65,12 +65,14 @@ class AIBot(Bot):
         self.strafe_left = random.uniform(0.7, 1.6)
         self.wander_point: pygame.Vector2 | None = None
         self.wander_left = 0.0
+        self.unstuck_left = 0.0
         self.stuck_left = self.STUCK_CHECK
         self.stuck_ref = pygame.Vector2(x, y)
 
     def act(self, dt: float, enemies: list[GameObject], obstacles: list[GameObject],
             world: list[GameObject], safe_center: pygame.Vector2 | None = None,
-            safe_radius: float | None = None, loot_target: pygame.Vector2 | None = None):
+            safe_radius: float | None = None, loot_target: pygame.Vector2 | None = None,
+            opening_chest: bool = False):
         """Jedna klatka AI. enemies: cele, które bot może atakować; obstacles: tylko przeszkody
         (linia widzenia); world: wszystko, co blokuje ruch i strzały. Zwraca wynik strzału lub None."""
         gun = self.gun
@@ -92,9 +94,14 @@ class AIBot(Bot):
         aim_error = 180.0
         outside_storm = (safe_center is not None and safe_radius is not None
                          and self.pos.distance_to(safe_center) > safe_radius * 0.9)
+        self.unstuck_left = max(0.0, self.unstuck_left - dt)
 
         if gun is None:
-            if loot_target is not None and not outside_storm:
+            if opening_chest:
+                move = pygame.Vector2()
+            elif self.unstuck_left > 0:
+                move = self._wander_direction(dt)
+            elif loot_target is not None and not outside_storm:
                 to_loot = loot_target - self.pos
                 move = to_loot.normalize() if to_loot.length_squared() > 0 else pygame.Vector2()
             elif outside_storm and safe_center is not None:
@@ -136,7 +143,11 @@ class AIBot(Bot):
         if move.length_squared() > 0:
             move.normalize_ip()
         self.move_and_collide(move * self.speed * dt, world)
-        self._check_stuck(dt)
+        if opening_chest:
+            self.stuck_left = self.STUCK_CHECK
+            self.stuck_ref = pygame.Vector2(self.pos)
+        else:
+            self._check_stuck(dt)
 
         if gun is not None:
             self._manage_weapon(dist)
@@ -265,4 +276,5 @@ class AIBot(Bot):
         if self.pos.distance_to(self.stuck_ref) < 20:
             self._new_wander_point()
             self.strafe_dir = -self.strafe_dir
+            self.unstuck_left = 1.4  # chwilowe obejście ściany zamiast pchania się w mur
         self.stuck_ref = pygame.Vector2(self.pos)

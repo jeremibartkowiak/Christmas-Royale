@@ -94,6 +94,18 @@ class ArenaScene(Scene):
             return pygame.Vector2(fallback)
         return preferred
 
+    def _chest_drop_pos(self, chest: Chest, toward: pygame.Vector2) -> pygame.Vector2:
+        """Szuka wolnego miejsca w stronę gracza (bez nachodzenia na ściany/skrzynię)."""
+        delta = toward - chest.pos
+        base_dir = delta.normalize() if delta.length_squared() > 0 else pygame.Vector2(0, 1)
+        probe = pygame.Rect(0, 0, Pickup.FRAME_SIZE, Pickup.FRAME_SIZE)
+        for angle in (0, 45, -45, 90, -90, 135, -135, 180):
+            cand = chest.pos + base_dir.rotate(angle) * 65
+            probe.center = (round(cand.x), round(cand.y))
+            if not any(o.collidable and probe.colliderect(o.rect) for o in self.objects):
+                return cand
+        return pygame.Vector2(toward)
+
     def _drop_active_weapon(self) -> None:
         gun = self.player.inventory.drop_active()
         if gun is None:
@@ -141,9 +153,9 @@ class ArenaScene(Scene):
         holding_e = self.player_alive and pygame.key.get_pressed()[pygame.K_e]
         for obj in self.objects:
             if isinstance(obj, Chest):
-                loot = obj.update_interaction(dt, self.player.pos, holding_e)
+                loot = obj.update_interaction(dt, self.player.pos, holding_e, actor=self.player)
                 if loot is not None:
-                    drop_pos = self._free_drop_pos(obj.pos + pygame.Vector2(0, 65), fallback=obj.pos)
+                    drop_pos = self._chest_drop_pos(obj, self.player.pos)
                     self.pickups.append(Pickup(drop_pos.x, drop_pos.y, loot, pickup_delay=0.25))
         for pickup in list(self.pickups):
             pickup.update(dt)

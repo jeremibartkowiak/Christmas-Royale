@@ -13,7 +13,7 @@ from maps import ArenaMap, make_br_arena
 from objects import GameObject, Obstacle
 from settings import VIRTUAL_W, VIRTUAL_H
 from ui import BattleRoyaleEndScreen, BattleRoyaleHud
-from weapons import Gun, roll_weapon
+from weapons import Gun, raycast, roll_weapon
 from zone import StormZone
 
 
@@ -25,13 +25,16 @@ class BattleRoyaleScene(ArenaScene):
     FLOOR_COLOR = (34, 42, 58)
     CELL_SIZE = 320  # rozmiar komórki siatki przestrzennej do kolizji (3x3 = ~960x960 px)
     SIGHT_CELL = 1150  # większa siatka do wykrywania wrogów i przeszkód wzrokiem
+    RENDER_CHUNK = 1000  # rozmiar chunka renderowania (widoczna jest tylko mała część mapy)
+    LOD_DISTANCE_SQ = 2600 ** 2  # powyżej tej odległości od gracza boty symulują rzadziej
+    LOD_INTERVAL = 0.12  # s między krokami AI dalekich botów
 
     def __init__(self, app, options: dict[str, float] | None = None):
         super().__init__(app)
         self.options = options or {}
         self.bot_difficulty = int(self.options.get("difficulty", 3))
         self.arena: ArenaMap
-        self.arena, chest_spots = make_br_arena(chest_count=90)
+        self.arena, chest_spots = make_br_arena()
 
         obstacles = self.arena.build_obstacles()
         self.obstacles: list[GameObject] = list(obstacles)
@@ -40,14 +43,19 @@ class BattleRoyaleScene(ArenaScene):
         ]
         self.objects = list(obstacles) + list(self.chests)
 
-        # Statyczne przeszkody i skrzynie (poza 4 ścianami granicznymi) w indeksie przestrzennym
+        # Statyczne przeszkody i skrzynie w siatkach kolizji oraz chunkach renderowania
         self.static_grid: dict[tuple[int, int], list[GameObject]] = {}
         self.sight_grid: dict[tuple[int, int], list[GameObject]] = {}
+        self.render_chunks: dict[tuple[int, int], list[GameObject]] = {}
         for obs in obstacles[4:]:
             self._grid_add(self.static_grid, obs, self.CELL_SIZE)
             self._grid_add(self.sight_grid, obs, self.SIGHT_CELL)
+            self._grid_add(self.render_chunks, obs, self.RENDER_CHUNK)
+        for wall in obstacles[:4]:
+            self._grid_add(self.render_chunks, wall, self.RENDER_CHUNK)
         for chest in self.chests:
             self._grid_add(self.static_grid, chest, self.CELL_SIZE)
+            self._grid_add(self.render_chunks, chest, self.RENDER_CHUNK)
         self.border_walls: list[GameObject] = list(obstacles[:4])
 
         # Losowe pozycje startowe dla 100 uczestników
@@ -59,10 +67,12 @@ class BattleRoyaleScene(ArenaScene):
 
         bounds = self.arena.bounds.inflate(-200, -200)
         self.bots: list[AIBot] = []
+        self.bot_lod_dt: dict[AIBot, float] = {}
         for i in range(1, self.PLAYER_COUNT):
             bx, by = spawns[i % len(spawns)]
             bot = AIBot(f"Bot{i}", bx, by, bounds=bounds, difficulty=self.bot_difficulty, start_empty=True)
             self.bots.append(bot)
+            self.bot_lod_dt[bot] = random.uniform(0, self.LOD_INTERVAL)
             self.objects.append(bot)
 
         self.zone = StormZone(self.arena.bounds)
@@ -139,6 +149,7 @@ class BattleRoyaleScene(ArenaScene):
         else:
             if obj in self.bots:
                 self.bots.remove(obj)
+                self.bot_lod_dt.pop(obj, None)
             if obj in self.objects:
                 self.objects.remove(obj)
             if self.player_alive and not self.bots:
@@ -190,6 +201,18 @@ class BattleRoyaleScene(ArenaScene):
         for bot in list(self.bots):
             if bot not in self.bots:
                 continue
+            # LOD: dalekie boty aktualizują się rzadziej, oszczędzając CPU na dużej mapie
+            if bot.pos.distance_squared_to(self.player.pos) > self.LOD_DISTANCE_SQ:
+                acc = self.bot_lod_dt.get(bot, 0.0) + dt
+                if acc < self.LOD_INTERVAL:
+                    self.bot_lod_dt[bot] = acc
+                    continue
+                self.bot_lod_dt[bot] = 0.0
+                step_dt = acc
+            else:
+                self.bot_lod_dt[bot] = 0.0
+                step_dt = dt
+
             local_obs = self._nearby(self.static_grid, bot.pos, self.CELL_SIZE, self.border_walls)
             local_bots = [b for b in self._nearby(bot_grid, bot.pos, self.CELL_SIZE) if b is not bot and b in self.bots]
             world = local_obs + local_bots
@@ -199,7 +222,7 @@ class BattleRoyaleScene(ArenaScene):
             # Wzrok i cele sprawdzane tylko wtedy, gdy bot szuka celu lub ma aktywny cel
             enemies: list[GameObject] = []
             sight_obs = local_obs
-            if bot.gun is not None and (bot.think_left - dt <= 0 or bot.target is not None):
+            if bot.gun is not None and (bot.think_left - step_dt <= 0 or bot.target is not None):
                 sight_obs = self._nearby(self.sight_grid, bot.pos, self.SIGHT_CELL, self.border_walls)
                 enemies = [b for b in self._nearby(bot_sight_grid, bot.pos, self.SIGHT_CELL)
                            if b is not bot and b in self.bots]
@@ -207,6 +230,7 @@ class BattleRoyaleScene(ArenaScene):
                     enemies.append(self.player)
 
             loot_target = None
+            opening_chest = False
             if bot.gun is None:
                 local_pickups = [p for p in self._nearby(pickup_grid, bot.pos, self.CELL_SIZE) if p.can_pickup]
                 if local_pickups:
@@ -217,10 +241,16 @@ class BattleRoyaleScene(ArenaScene):
                     if local_chests:
                         nearest_c = min(local_chests, key=lambda c: c.pos.distance_squared_to(bot.pos))
                         loot_target = nearest_c.pos
-                        if bot.pos.distance_to(nearest_c.pos) <= nearest_c.interact_range:
-                            loot = nearest_c.update_interaction(dt, bot.pos, True)
-                            if loot is not None:
-                                bot.inventory.add(loot)
+                        dist_c = bot.pos.distance_to(nearest_c.pos)
+                        if dist_c <= nearest_c.interact_range:
+                            # Nie otwieraj skrzyni przez ścianę
+                            _, wall_hit = raycast(bot.pos, (nearest_c.pos - bot.pos) / max(1.0, dist_c),
+                                                  dist_c, local_obs, ignore=nearest_c)
+                            if wall_hit is None:
+                                opening_chest = True
+                                loot = nearest_c.update_interaction(step_dt, bot.pos, True, actor=bot)
+                                if loot is not None:
+                                    bot.inventory.add(loot)
 
             # Podnoszenie pickupów przez bota, jeśli nie ma broni
             if bot.gun is None:
@@ -231,9 +261,9 @@ class BattleRoyaleScene(ArenaScene):
                         self.pickups.remove(p)
                         break
 
-            result = bot.act(dt, enemies, sight_obs, world,
+            result = bot.act(step_dt, enemies, sight_obs, world,
                              safe_center=self.zone.center, safe_radius=self.zone.radius,
-                             loot_target=loot_target)
+                             loot_target=loot_target, opening_chest=opening_chest)
             if result:
                 self._handle_shot(result, bot.gun, bot)
 
@@ -254,10 +284,26 @@ class BattleRoyaleScene(ArenaScene):
                     self.kill_feed.add("Storm", "Zone", bot.name)
                     self._remove_participant(bot)
 
-    # --- rysowanie (z przycinaniem do widoku kamery dla wydajności) ---
+    # --- rysowanie (tylko widoczne chunki mapy) ---
     def draw_floor(self, surface: pygame.Surface, offset: pygame.Vector2) -> None:
         floor = self.arena.bounds.move(-round(offset.x), -round(offset.y))
         pygame.draw.rect(surface, self.FLOOR_COLOR, floor)
+
+    def _visible_static_objects(self, view: pygame.Rect) -> list[GameObject]:
+        c0x = int(view.left // self.RENDER_CHUNK)
+        c1x = int(view.right // self.RENDER_CHUNK)
+        c0y = int(view.top // self.RENDER_CHUNK)
+        c1y = int(view.bottom // self.RENDER_CHUNK)
+        seen: set[int] = set()
+        visible: list[GameObject] = []
+        for cx in range(c0x, c1x + 1):
+            for cy in range(c0y, c1y + 1):
+                for obj in self.render_chunks.get((cx, cy), ()):
+                    oid = id(obj)
+                    if oid not in seen:
+                        seen.add(oid)
+                        visible.append(obj)
+        return visible
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill((25, 30, 40))
@@ -269,14 +315,20 @@ class BattleRoyaleScene(ArenaScene):
         for pickup in self.pickups:
             if view.colliderect(pickup.rect):
                 pickup.draw(surface, offset)
-        for obj in self.objects:
+
+        visible_static = self._visible_static_objects(view)
+        for obj in visible_static:
             if view.colliderect(obj.rect):
                 obj.draw(surface, offset)
+        for bot in self.bots:
+            if view.colliderect(bot.rect):
+                bot.draw(surface, offset)
+
         if self.player_alive:
             self.player.draw(surface, offset)
-            for chest in self.chests:
-                if not chest.opened and view.colliderect(chest.rect):
-                    chest.draw_prompt(surface, offset, self.player.pos)
+            for obj in visible_static:
+                if isinstance(obj, Chest) and not obj.opened:
+                    obj.draw_prompt(surface, offset, self.player.pos)
         for tracer in self.tracers:
             tracer.draw(surface, offset)
 

@@ -74,19 +74,29 @@ class Chest[T](GameObject):
         self.interact_range = interact_range
         self.progress = 0.0
         self.opened = False
+        self._opener: object | None = None
         self.prompt = ProximityPrompt("E", "Open Chest")
 
     def in_range(self, player_pos: pygame.Vector2) -> bool:
         return self.pos.distance_to(player_pos) <= self.interact_range
 
-    def update_interaction(self, dt: float, player_pos: pygame.Vector2, holding_interact: bool) -> T | None:
+    def update_interaction(self, dt: float, player_pos: pygame.Vector2, holding_interact: bool,
+                           actor: object = "player") -> T | None:
         """Aktualizuje otwieranie skrzyni. Po pełnym przytrzymaniu zwraca zawartość `T` i oznacza jako otwartą."""
-        if self.opened or not holding_interact or not self.in_range(player_pos):
-            self.progress = 0.0
+        if self.opened:
             return None
+        if not holding_interact or not self.in_range(player_pos):
+            if self._opener is actor:
+                self.progress = 0.0
+                self._opener = None
+            return None
+        if self._opener is not None and self._opener is not actor:
+            return None  # ktoś inny już otwiera tę skrzynię
+        self._opener = actor
         self.progress += dt
         if self.progress >= self.hold_time:
             self.progress = 0.0
+            self._opener = None
             self.opened = True
             self.image.fill(self.OPENED_COLOR)
             loot = self.loot
