@@ -18,7 +18,7 @@ class GameScene(ArenaScene):
 
     def __init__(self, app):
         super().__init__(app)
-        self.player = Player(*self.RESPAWN_POS)
+        self.player = self._make_player(*self.RESPAWN_POS)
         self.eliminated_screen = EliminatedScreen()
         # Obiekty świata (poza graczem). Kolizje: flaga `collidable` w konstruktorze obiektu.
         self.objects = [
@@ -33,7 +33,7 @@ class GameScene(ArenaScene):
         self.camera = Camera(self.player.pos)
 
     def respawn(self) -> None:
-        self.player = Player(*self.RESPAWN_POS)
+        self.player = self._make_player(*self.RESPAWN_POS)
         self.player_alive = True
         self.camera.pos = pygame.Vector2(self.player.pos)
 

@@ -47,8 +47,8 @@ class Player(GameObject):
     SPEED = 400  # piksele na sekundę
 
     def __init__(self, x: float, y: float, name: str = PLAYER_NAME, max_hp: float = 100,
-                 guns: list[Gun] | None = None):
-        super().__init__(x, y, self.SIZE, self.SIZE, PLAYER_COLOR, max_hp=max_hp)
+                 guns: list[Gun] | None = None, color: tuple[int, int, int] = PLAYER_COLOR):
+        super().__init__(x, y, self.SIZE, self.SIZE, color, max_hp=max_hp)
         self.name = name
         self.move_state = "idle"
         if guns is None:

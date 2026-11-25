@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pygame
+
 
 @dataclass
 class Participant:
@@ -11,6 +13,7 @@ class Participant:
     color: tuple[int, int, int]  # placeholder zdjęcia gracza (później .png)
     is_player: bool = False
     points: int = 0
+    pfp_surface: pygame.Surface | None = None
 
 
 def ranking(participants: list[Participant]) -> list[Participant]:

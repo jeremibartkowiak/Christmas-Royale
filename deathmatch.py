@@ -5,6 +5,7 @@ import random
 
 import pygame
 
+from account import MATCH_REWARD_TOKENS
 from arena import ArenaScene
 from bot_ai import AIBot
 from camera import Camera
@@ -34,7 +35,9 @@ class DeathmatchScene(ArenaScene):
         self.arena: ArenaMap = make_dm_arena()
         self.objects = self.arena.build_obstacles()
         self.obstacles: list[GameObject] = list(self.objects)  # same przeszkody (linia widzenia botów)
-        self.participants = [Participant(PLAYER_NAME, PLAYER_COLOR, is_player=True)]
+        acc = self.app.account
+        pfp = acc.load_pfp_surface((54, 54))
+        self.participants = [Participant(acc.name, acc.player_color(), is_player=True, pfp_surface=pfp)]
         self.participants += [Participant(f"Bot{i}", BOT_COLOR) for i in range(1, self.PLAYER_COUNT)]
         self.by_name = {p.name: p for p in self.participants}
         self.time_left = float(opts.get("minutes", self.MATCH_TIME / 60.0)) * 60.0
@@ -42,7 +45,7 @@ class DeathmatchScene(ArenaScene):
         self.respawn_font = pygame.font.Font(None, 64)
         self.player_respawn_left = 0.0
         self.bot_respawns: list[list] = []  # [pozostały czas, nazwa bota]
-        self.player = Player(0, 0)
+        self.player = self._make_player(0, 0)
         self._spawn_player()
         self.camera = Camera(self.player.pos)
         for p in self.participants:
@@ -67,7 +70,7 @@ class DeathmatchScene(ArenaScene):
         return random.choice(best)
 
     def _spawn_player(self) -> None:
-        self.player = Player(*self._pick_spawn())
+        self.player = self._make_player(*self._pick_spawn())
         self.player.protection = SpawnProtection()
         self.player_alive = True
         if hasattr(self, "camera"):
@@ -127,7 +130,8 @@ class DeathmatchScene(ArenaScene):
         return obj.protection is not None and obj.protection.active
 
     def _finish(self) -> None:
-        self.app.change_scene(ResultsScene(self.app, self.participants))
+        self.app.account.add_tokens(MATCH_REWARD_TOKENS)
+        self.app.change_scene(ResultsScene(self.app, self.participants, reward_tokens=MATCH_REWARD_TOKENS))
 
     # --- rysowanie ---
     def draw_floor(self, surface: pygame.Surface, offset: pygame.Vector2) -> None:

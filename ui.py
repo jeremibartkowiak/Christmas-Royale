@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pygame
 
+from assets import get_weapon_icon
 from settings import (VIRTUAL_W, VIRTUAL_H, HUD_FONT_SIZE, HUD_MARGIN, HUD_COLOR, HUD_EMPTY_COLOR,
                       HP_BAR_SIZE, HP_BAR_SLANT, HP_FONT_SIZE, HP_BAR_COLOR, HP_BAR_BACK_COLOR,
                       CROSSHAIR_COLOR)
@@ -45,8 +46,9 @@ class KillFeed:
     def draw(self, surface: pygame.Surface) -> None:
         y = self.MARGIN
         for killer, weapon, victim, _ in self.entries:
+            weapon_part = get_weapon_icon(weapon, (64, 22)) or self.font.render(weapon, True, self.WEAPON_COLOR)
             parts = [self.font.render(killer, True, self.TEXT_COLOR),
-                     self.font.render(weapon, True, self.WEAPON_COLOR),
+                     weapon_part,
                      self.font.render(victim, True, self.TEXT_COLOR)]
             gap = 16
             w = sum(p.get_width() for p in parts) + gap * (len(parts) - 1) + self.PADDING[0] * 2
@@ -55,7 +57,7 @@ class KillFeed:
             pygame.draw.rect(box, self.BACK_COLOR, box.get_rect(), border_radius=6)
             x = self.PADDING[0]
             for part in parts:
-                box.blit(part, (x, self.PADDING[1]))
+                box.blit(part, (x, (h - part.get_height()) // 2))
                 x += part.get_width() + gap
             surface.blit(box, (VIRTUAL_W - self.MARGIN - w, y))
             y += h + self.ROW_GAP
@@ -156,20 +158,24 @@ class InventoryBar:
         y = VIRTUAL_H - self.BOTTOM_MARGIN - total_h
         for i, gun in enumerate(inventory.guns):
             x = x0 + i * (self.SLOT_SIZE + self.SLOT_GAP)
-            self._draw_slot(surface, x, y, gun.name, i == inventory.index)
+            self._draw_slot(surface, x, y, gun.name, i == inventory.index, gun.icon_image)
             self._draw_key(surface, x + self.SLOT_SIZE // 2, y + self.SLOT_SIZE + self.KEY_GAP, str(i + 1))
 
-    def _draw_slot(self, surface: pygame.Surface, x: int, y: int, name: str, active: bool) -> None:
+    def _draw_slot(self, surface: pygame.Surface, x: int, y: int, name: str, active: bool,
+                   icon: pygame.Surface | None = None) -> None:
         size = self.SLOT_SIZE
         box = pygame.Surface((size, size), pygame.SRCALPHA)
         pygame.draw.rect(box, self.SLOT_ACTIVE_COLOR if active else self.SLOT_COLOR, box.get_rect(), border_radius=8)
         border = self.BORDER_ACTIVE_COLOR if active else self.BORDER_COLOR
         pygame.draw.rect(box, border, box.get_rect(), width=3 if active else 2, border_radius=8)
-        text = self.name_font.render(name, True, self.NAME_COLOR)
-        max_w = size - 8
-        if text.get_width() > max_w:  # długa nazwa: zmniejsz, żeby zmieściła się w slocie
-            text = pygame.transform.smoothscale(text, (max_w, round(text.get_height() * max_w / text.get_width())))
-        box.blit(text, text.get_rect(center=(size // 2, size // 2)))
+        if icon is not None:
+            box.blit(icon, icon.get_rect(center=(size // 2, size // 2)))
+        else:
+            text = self.name_font.render(name, True, self.NAME_COLOR)
+            max_w = size - 8
+            if text.get_width() > max_w:  # długa nazwa: zmniejsz, żeby zmieściła się w slocie
+                text = pygame.transform.smoothscale(text, (max_w, round(text.get_height() * max_w / text.get_width())))
+            box.blit(text, text.get_rect(center=(size // 2, size // 2)))
         surface.blit(box, (x, y))
 
     def _draw_key(self, surface: pygame.Surface, center_x: int, y: int, label: str) -> None:
@@ -287,7 +293,10 @@ class MatchHud:
         y = timer_rect.bottom + 10
         for i, p in enumerate(ranked):
             rect = pygame.Rect(x0 + i * (self.PORTRAIT + self.GAP), y, self.PORTRAIT, self.PORTRAIT)
-            pygame.draw.rect(surface, p.color, rect, border_radius=6)
+            if p.pfp_surface is not None:
+                surface.blit(p.pfp_surface, rect)
+            else:
+                pygame.draw.rect(surface, p.color, rect, border_radius=6)
             border = self.ACCENT if p.is_player else (0, 0, 0)
             pygame.draw.rect(surface, border, rect, width=3, border_radius=6)
             points = self.points_font.render(str(p.points), True, self.ACCENT if p.is_player else (255, 255, 255))
@@ -482,16 +491,19 @@ class BattleRoyaleEndScreen:
         return None
 
     def draw(self, surface: pygame.Surface, mouse_pos: pygame.Vector2, victory: bool,
-             place: int, total: int, eliminations: int) -> None:
+             place: int, total: int, eliminations: int, reward_tokens: int = 0) -> None:
         overlay = pygame.Surface((VIRTUAL_W, VIRTUAL_H), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 175))
         surface.blit(overlay, (0, 0))
         title_text = "VICTORY ROYALE!" if victory else "YOU WERE ELIMINATED"
         title_color = (255, 210, 60) if victory else (255, 95, 95)
         title = self.title_font.render(title_text, True, title_color)
-        surface.blit(title, title.get_rect(center=(VIRTUAL_W // 2, VIRTUAL_H // 2 - 100)))
+        surface.blit(title, title.get_rect(center=(VIRTUAL_W // 2, VIRTUAL_H // 2 - 110)))
         info = self.info_font.render(f"Place: #{place} / {total}     Eliminations: {eliminations}",
                                      True, (255, 255, 255))
-        surface.blit(info, info.get_rect(center=(VIRTUAL_W // 2, VIRTUAL_H // 2 - 15)))
+        surface.blit(info, info.get_rect(center=(VIRTUAL_W // 2, VIRTUAL_H // 2 - 25)))
+        if reward_tokens > 0:
+            rew = self.info_font.render(f"+{reward_tokens} Tokens", True, (255, 210, 80))
+            surface.blit(rew, rew.get_rect(center=(VIRTUAL_W // 2, VIRTUAL_H // 2 + 30)))
         self.again_button.draw(surface, mouse_pos)
         self.menu_button.draw(surface, mouse_pos)

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import math
+import os
 import random
 from typing import TYPE_CHECKING
 
 import pygame
+
+from assets import load_image
 
 if TYPE_CHECKING:
     from objects import GameObject
@@ -65,7 +68,8 @@ class Gun:
                  damage: float = 20, length: int = 60, color: tuple[int, int, int] = (200, 200, 200),
                  points: int = 0, spread_idle: float = 0.0, spread_walk: float = 0.0,
                  spray_pattern: list[float] | None = None, spray_bloom: float = 0.0,
-                 max_bloom: float = 5.0, spray_recovery_time: float = 0.35):
+                 max_bloom: float = 5.0, spray_recovery_time: float = 0.35,
+                 image_path: str | None = None, icon_path: str | None = None):
         """name: nazwa pokazywana w kill feedzie.
         automatic: True = ogień ciągły po przytrzymaniu LPM, False = jeden strzał na kliknięcie.
         fire_rate: strzały na sekundę. magazine_size: pojemność magazynka. reload_time: sekundy.
@@ -97,9 +101,17 @@ class Gun:
         self.pos = pygame.Vector2(owner_pos)
         self.direction = pygame.Vector2(1, 0)
         self.angle = 0.0  # stopnie, 0 = w prawo
-        # Placeholder (greybox) - później podmiana na .png (rysowany "w prawo")
-        self.base_image = pygame.Surface((self.length, self.THICKNESS), pygame.SRCALPHA)  # alfa: rogi po obrocie przezroczyste
-        self.base_image.fill(color)
+        # Tekstura .png (rysowana "w prawo") albo fallback na kolorowy prostokąt (greybox)
+        tex = load_image(image_path, max_size=(self.length, 64), keep_aspect=True) if image_path else None
+        if tex is not None:
+            self.base_image = tex
+            self.length = tex.get_width()
+            self.has_texture = True
+        else:
+            self.base_image = pygame.Surface((self.length, self.THICKNESS), pygame.SRCALPHA)
+            self.base_image.fill(color)
+            self.has_texture = False
+        self.icon_image = load_image(icon_path, max_size=(52, 52), keep_aspect=True) if icon_path else None
         self.image = self.base_image
         self.cooldown = 0.0
 
@@ -113,6 +125,12 @@ class Gun:
 
     def cancel_reload(self) -> None:
         self.reload_left = 0.0
+
+    def set_color(self, color: tuple[int, int, int]) -> None:
+        if self.has_texture:
+            return
+        self.base_image.fill(color)
+        self.image = pygame.transform.rotate(self.base_image, self.angle)
 
     def current_spread(self, move_state: str = "idle") -> float:
         """Aktualny kąt losowego rozrzutu (w stopniach) dla podanego stanu ruchu."""
@@ -199,19 +217,24 @@ def make_sniper(owner_pos: pygame.Vector2) -> Gun:
                spread_idle=0.0, spread_walk=8.0, spray_pattern=[], spray_bloom=0.0)
 
 
-def make_assault_rifle(owner_pos: pygame.Vector2) -> Gun:
+def make_ak47(owner_pos: pygame.Vector2) -> Gun:
     # Tymczasowe statystyki testowe do decyzji Użytkownika
     pattern = [0.0, -1.2, -2.5, -1.0, 1.8, 3.8, 2.5, -1.5, -4.0, -2.0, 2.0, 4.5, 1.5, -2.5]
-    return Gun(owner_pos, name="Assault Rifle", automatic=True, fire_rate=9.0, magazine_size=30,
-               reload_time=2.0, damage=16, length=82, color=(90, 120, 150), points=14,
+    return Gun(owner_pos, name="AK-47", automatic=True, fire_rate=9.0, magazine_size=30,
+               reload_time=2.0, damage=16, length=112, color=(90, 120, 150), points=14,
                spread_idle=0.0, spread_walk=4.0, spray_pattern=pattern,
-               spray_bloom=0.6, max_bloom=5.5, spray_recovery_time=0.4)
+               spray_bloom=0.6, max_bloom=5.5, spray_recovery_time=0.4,
+               image_path=os.path.join("assets", "weapons", "ak47.png"),
+               icon_path=os.path.join("assets", "weapons", "icon_ak47.png"))
+
+
+make_assault_rifle = make_ak47
 
 
 # Pula broni do skrzyń (fabryka, waga szansy) - wartości tymczasowe do decyzji Użytkownika
 WEAPONS_POOL: list[tuple[callable, float]] = [
     (make_pistol, 55.0),
-    (make_assault_rifle, 30.0),
+    (make_ak47, 30.0),
     (make_sniper, 15.0),
 ]
 

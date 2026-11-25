@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pygame
 
+from account import Account
 from loading import LoadingScene
 from menu import MenuScene
 from modes import GameMode
@@ -21,6 +22,7 @@ class App:
         self.canvas = pygame.Surface((VIRTUAL_W, VIRTUAL_H))
         self.clock = pygame.time.Clock()
         self.running = True
+        self.account = Account.load()
         self.scene: Scene = MenuScene(self)
 
     # --- sceny ---

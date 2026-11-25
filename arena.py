@@ -32,6 +32,20 @@ class ArenaScene(Scene):
         self.esc_menu_open = False
         self.fire_pressed = False
 
+    def _apply_weapon_skin(self, gun: Gun) -> None:
+        acc = getattr(self.app, "account", None)
+        if acc is not None and gun.name in acc.equipped_weapon_skins:
+            gun.set_color(acc.weapon_color(gun.name, (200, 200, 200)))
+
+    def _make_player(self, x: float, y: float, guns: list[Gun] | None = None) -> Player:
+        acc = getattr(self.app, "account", None)
+        name = acc.name if acc is not None else "Player1"
+        color = acc.player_color() if acc is not None else (40, 90, 255)
+        player = Player(x, y, name=name, guns=guns, color=color)
+        for gun in player.inventory.guns:
+            self._apply_weapon_skin(gun)
+        return player
+
     # --- zdarzenia ---
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -161,6 +175,7 @@ class ArenaScene(Scene):
             pickup.update(dt)
             if self.player_alive and pickup.can_pickup and self.player.rect.colliderect(pickup.rect):
                 if isinstance(pickup.item, Gun):
+                    self._apply_weapon_skin(pickup.item)
                     self.player.inventory.add(pickup.item)
                 self.pickups.remove(pickup)
 

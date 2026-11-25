@@ -25,9 +25,10 @@ class ResultsScene(Scene):
     }
     PLACE_OFFSETS = {2: -1, 1: 0, 3: 1}
 
-    def __init__(self, app, participants: list[Participant]):
+    def __init__(self, app, participants: list[Participant], reward_tokens: int = 0):
         super().__init__(app)
         self.ranked = ranking(participants)
+        self.reward_tokens = reward_tokens
         self.time = 0.0
         self.title_font = pygame.font.Font(None, 96)
         self.title_font.set_bold(True)
@@ -75,13 +76,21 @@ class ResultsScene(Scene):
         bob = math.sin(self.time * 2.5) * 8 if place == 1 else 0  # zwycięzca lekko się unosi
         body = pygame.Rect(0, 0, size, size)
         body.midbottom = (cx, pedestal.top - 20 + bob)
-        pygame.draw.rect(surface, participant.color, body)
+        if participant.pfp_surface is not None:
+            surface.blit(pygame.transform.smoothscale(participant.pfp_surface, (size, size)), body)
+        else:
+            pygame.draw.rect(surface, participant.color, body)
         name = self.name_font.render(participant.name, True, (255, 255, 255))
         surface.blit(name, name.get_rect(midbottom=(cx, body.top - 12)))
 
     def _draw_player_place(self, surface: pygame.Surface) -> None:
         """Gdy gracz nie jest w Top 3, pokazuje jego miejsce pod podium."""
+        parts = []
         for index, p in enumerate(self.ranked):
             if p.is_player and index >= 3:
-                text = self.you_font.render(f"Your place: #{index + 1}   {p.points} pts", True, (255, 210, 80))
-                surface.blit(text, text.get_rect(midtop=(VIRTUAL_W // 2, self.BASE_Y + 30)))
+                parts.append(f"Your place: #{index + 1}   {p.points} pts")
+        if self.reward_tokens > 0:
+            parts.append(f"+{self.reward_tokens} Tokens")
+        if parts:
+            text = self.you_font.render("     |     ".join(parts), True, (255, 210, 80))
+            surface.blit(text, text.get_rect(midtop=(VIRTUAL_W // 2, self.BASE_Y + 30)))

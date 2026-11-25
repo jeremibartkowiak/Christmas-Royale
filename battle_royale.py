@@ -4,6 +4,7 @@ import random
 
 import pygame
 
+from account import MATCH_REWARD_TOKENS
 from arena import ArenaScene
 from bot_ai import AIBot
 from camera import Camera
@@ -62,7 +63,7 @@ class BattleRoyaleScene(ArenaScene):
         spawns = list(self.arena.spawn_points)
         random.shuffle(spawns)
         px, py = spawns[0]
-        self.player = Player(px, py, guns=[])  # start bez broni!
+        self.player = self._make_player(px, py, guns=[])  # start bez broni!
         self.camera = Camera(self.player.pos)
 
         bounds = self.arena.bounds.inflate(-200, -200)
@@ -82,6 +83,7 @@ class BattleRoyaleScene(ArenaScene):
         self.match_over = False
         self.victory = False
         self.player_place = self.PLAYER_COUNT
+        self.reward_tokens = 0
 
     # --- indeks przestrzenny (optymalizacja dla 100 graczy) ---
     @staticmethod
@@ -146,6 +148,8 @@ class BattleRoyaleScene(ArenaScene):
                 self.player_place = self.alive_count
                 self.player_alive = False
                 self.match_over = True
+                self.reward_tokens = MATCH_REWARD_TOKENS
+                self.app.account.add_tokens(MATCH_REWARD_TOKENS)
         else:
             if obj in self.bots:
                 self.bots.remove(obj)
@@ -156,6 +160,8 @@ class BattleRoyaleScene(ArenaScene):
                 self.player_place = 1
                 self.victory = True
                 self.match_over = True
+                self.reward_tokens = MATCH_REWARD_TOKENS
+                self.app.account.add_tokens(MATCH_REWARD_TOKENS)
 
     def update_world(self, dt: float) -> None:
         if self.match_over:
@@ -341,7 +347,7 @@ class BattleRoyaleScene(ArenaScene):
         mouse = self.app.mouse_virtual_pos()
         if self.match_over:
             self.end_screen.draw(surface, mouse, self.victory, self.player_place,
-                                 self.PLAYER_COUNT, self.eliminations)
+                                 self.PLAYER_COUNT, self.eliminations, self.reward_tokens)
         if self._shows_crosshair():
             self.crosshair.draw(surface, mouse)
         if self.esc_menu_open:
