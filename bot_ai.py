@@ -202,7 +202,7 @@ class AIBot(Bot):
         # Gdy wszystkie bronie są w normie, dobierz najlepszą wg dystansu (jeśli ma więcej niż 1)
         if len(self.inventory.guns) < 2:
             return
-        preferred = 1 if (self.inventory.guns[1].name == "Sniper" and dist >= self.SNIPER_MIN_RANGE) else 0
+        preferred = 1 if (self.inventory.guns[1].name in ("AWP", "Sniper") and dist >= self.SNIPER_MIN_RANGE) else 0
         if preferred != self.inventory.index and self.inventory.guns[preferred].ammo > 0:
             self._select_weapon(preferred)
 
@@ -241,7 +241,7 @@ class AIBot(Bot):
         if self.burst_left <= 0:
             self.burst_left = random.randint(*self.burst_shots)
         true_dir = self.gun.direction
-        spread = self.sniper_spread if self.gun.name == "Sniper" else self.aim_spread
+        spread = self.sniper_spread if self.gun.name in ("AWP", "Sniper") else self.aim_spread
         self.gun.direction = self.aim_dir.rotate(random.uniform(-spread, spread))
         self.gun.pos = self.pos + self.aim_dir * self.gun.HOLD_DISTANCE
         result = self.gun.fire(self, world, True, True, apply_spread=False)

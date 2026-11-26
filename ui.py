@@ -97,6 +97,8 @@ class Hud:
         gun = player.gun
         if gun is None:
             text, color = "No weapon", HUD_EMPTY_COLOR
+        elif gun.magazine_size == 0:
+            text, color = gun.name, HUD_COLOR
         else:
             text = f"Ammo   {gun.ammo} / {gun.magazine_size}"
             color = HUD_COLOR if gun.ammo > 0 else HUD_EMPTY_COLOR

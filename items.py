@@ -44,12 +44,12 @@ ITEM_LIST: tuple[ItemDef, ...] = (
     ItemDef("skin_golden_santa", "Golden Santa", "player_skin", "mythic", (255, 210, 60)),
 
     # Skiny broni (placeholder: kolor prostokąta broni)
-    ItemDef("pistol_mint", "Pistol | Mint", "weapon_skin", "common", (120, 230, 180), price=350, weapon_name="Pistol"),
-    ItemDef("pistol_crimson", "Pistol | Crimson", "weapon_skin", "epic", (220, 55, 70), weapon_name="Pistol"),
+    ItemDef("pistol_mint", "Glock-17 | Mint", "weapon_skin", "common", (120, 230, 180), price=350, weapon_name="Glock-17"),
+    ItemDef("pistol_crimson", "Glock-17 | Crimson", "weapon_skin", "epic", (220, 55, 70), weapon_name="Glock-17"),
     ItemDef("ar_arctic", "AK-47 | Arctic", "weapon_skin", "rare", (200, 225, 245), price=1000, weapon_name="AK-47"),
     ItemDef("ar_blaze", "AK-47 | Blaze", "weapon_skin", "legendary", (255, 120, 40), weapon_name="AK-47"),
-    ItemDef("sniper_emerald", "Sniper | Emerald", "weapon_skin", "epic", (50, 200, 120), price=1600, weapon_name="Sniper"),
-    ItemDef("sniper_asiimov", "Sniper | Asiimov", "weapon_skin", "mythic", (255, 145, 35), weapon_name="Sniper"),
+    ItemDef("sniper_emerald", "AWP | Emerald", "weapon_skin", "epic", (50, 200, 120), price=1600, weapon_name="AWP"),
+    ItemDef("sniper_asiimov", "AWP | Asiimov", "weapon_skin", "mythic", (255, 145, 35), weapon_name="AWP"),
 
     # Skrzynki (Case to też item!)
     ItemDef(

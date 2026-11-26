@@ -5,7 +5,7 @@ import pygame
 from objects import GameObject
 from settings import BOT_COLOR, PLAYER_COLOR, PLAYER_NAME
 from ui import NameTag
-from weapons import Gun, Inventory, make_pistol, make_sniper
+from weapons import Gun, Inventory, make_knife, make_pistol, make_sniper
 
 
 class Bot(GameObject):
@@ -51,8 +51,9 @@ class Player(GameObject):
         super().__init__(x, y, self.SIZE, self.SIZE, color, max_hp=max_hp)
         self.name = name
         self.move_state = "idle"
+        self._aim_target = pygame.Vector2(x + 1, y)
         if guns is None:
-            guns = [make_pistol(self.pos), make_sniper(self.pos)]
+            guns = [make_pistol(self.pos), make_sniper(self.pos), make_knife(self.pos)]
         self.inventory = Inventory(guns)
         self.name_tag = NameTag(name)
 
@@ -73,13 +74,17 @@ class Player(GameObject):
         self.move_and_collide(direction * self.SPEED * dt, solids)
 
     def aim_at(self, world_target: pygame.Vector2) -> None:
+        self._aim_target = pygame.Vector2(world_target)
         if self.gun is not None:
             self.gun.aim_at(self.pos, world_target)
 
-    def shoot(self, targets: list[GameObject], trigger_held: bool, trigger_pressed: bool):
+    def shoot(self, targets: list[GameObject], trigger_held: bool, trigger_pressed: bool,
+              alt_pressed: bool = False):
         if self.gun is None:
             return None
-        return self.gun.fire(self, targets, trigger_held, trigger_pressed, move_state=self.move_state)
+        return self.gun.fire(self, targets, trigger_held, trigger_pressed,
+                             move_state=self.move_state, alt_pressed=alt_pressed,
+                             world_target=self._aim_target)
 
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
         super().draw(surface, camera_offset)

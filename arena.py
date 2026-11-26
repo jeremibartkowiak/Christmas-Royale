@@ -31,6 +31,7 @@ class ArenaScene(Scene):
         self.esc_menu = EscMenu()
         self.esc_menu_open = False
         self.fire_pressed = False
+        self.alt_fire_pressed = False
 
     def _apply_weapon_skin(self, gun: Gun) -> None:
         acc = getattr(self.app, "account", None)
@@ -51,6 +52,7 @@ class ArenaScene(Scene):
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.esc_menu_open = not self.esc_menu_open
             self.fire_pressed = False
+            self.alt_fire_pressed = False
             return
         if self.esc_menu_open:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -68,6 +70,8 @@ class ArenaScene(Scene):
             self.player.inventory.select(event.key - pygame.K_1)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self.fire_pressed = True  # kliknięcie w tej klatce (dla broni półautomatycznych)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            self.alt_fire_pressed = True  # PPM (atak specjalny, np. pchnięcie nożem)
 
     def handle_dead_event(self, event: pygame.event.Event) -> None:
         """Zdarzenia, gdy gracz nie żyje (np. przyciski ekranu eliminacji)."""
@@ -121,6 +125,8 @@ class ArenaScene(Scene):
         return pygame.Vector2(toward)
 
     def _drop_active_weapon(self) -> None:
+        if self.player.gun is None or not self.player.gun.droppable:
+            return
         gun = self.player.inventory.drop_active()
         if gun is None:
             return
@@ -135,11 +141,12 @@ class ArenaScene(Scene):
         self.player.aim_at(self.mouse_world_pos())
         if self.player.gun is not None:
             self.player.gun.update(dt)
-            result = self.player.shoot(self._targets(), firing, self.fire_pressed)
+            result = self.player.shoot(self._targets(), firing, self.fire_pressed,
+                                       alt_pressed=self.alt_fire_pressed)
             if result:
                 self._handle_shot(result, self.player.gun, self.player)
         if self.player.protection is not None:
-            self.player.protection.update(dt, moving or firing or self.fire_pressed)
+            self.player.protection.update(dt, moving or firing or self.fire_pressed or self.alt_fire_pressed)
 
     # --- aktualizacja ---
     def update_world(self, dt: float) -> None:
@@ -154,6 +161,7 @@ class ArenaScene(Scene):
             return  # menu ESC wstrzymuje grę
         self.update_world(dt)
         self.fire_pressed = False
+        self.alt_fire_pressed = False
         self._update_loot(dt)
         for tracer in self.tracers:
             tracer.update(dt)

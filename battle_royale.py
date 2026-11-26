@@ -14,7 +14,7 @@ from maps import ArenaMap, make_br_arena
 from objects import GameObject, Obstacle
 from settings import VIRTUAL_W, VIRTUAL_H
 from ui import BattleRoyaleEndScreen, BattleRoyaleHud
-from weapons import Gun, raycast, roll_weapon
+from weapons import Gun, make_knife, raycast, roll_weapon
 from zone import StormZone
 
 
@@ -63,7 +63,7 @@ class BattleRoyaleScene(ArenaScene):
         spawns = list(self.arena.spawn_points)
         random.shuffle(spawns)
         px, py = spawns[0]
-        self.player = self._make_player(px, py, guns=[])  # start bez broni!
+        self.player = self._make_player(px, py, guns=[make_knife(pygame.Vector2(px, py))])  # start z samym nożem!
         self.camera = Camera(self.player.pos)
 
         bounds = self.arena.bounds.inflate(-200, -200)
@@ -199,7 +199,8 @@ class BattleRoyaleScene(ArenaScene):
             self.player.gun.update(dt)
             shoot_targets = self._nearby(self.sight_grid, self.player.pos, self.SIGHT_CELL, self.border_walls)
             shoot_targets.extend(b for b in self.bots if b.pos.distance_squared_to(self.player.pos) < 2200 ** 2)
-            result = self.player.shoot(shoot_targets, firing, self.fire_pressed)
+            result = self.player.shoot(shoot_targets, firing, self.fire_pressed,
+                                       alt_pressed=self.alt_fire_pressed)
             if result:
                 self._handle_shot(result, self.player.gun, self.player)
 

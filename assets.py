@@ -10,6 +10,9 @@ _IMAGE_CACHE: dict[tuple[str, tuple[int, int] | None, bool], pygame.Surface | No
 # Ikony broni do KillFeedu i HUD-u (nazwa broni -> ścieżka do .png)
 WEAPON_ICONS: dict[str, str] = {
     "AK-47": os.path.join("assets", "weapons", "icon_ak47.png"),
+    "Glock-17": os.path.join("assets", "weapons", "icon_glock17.png"),
+    "AWP": os.path.join("assets", "weapons", "icon_awp.png"),
+    "Knife": os.path.join("assets", "weapons", "icon_knife.png"),
 }
 
 
