@@ -102,6 +102,8 @@ class Gun:
         self.shot_index = 0
         self.since_last_shot = 0.0
         self.current_bloom = 0.0
+        self.recoil_kick = 0.0  # wizualne cofnięcie broni po strzale (px)
+        self.visual_spread_angle = 0.0  # wizualne odchylenie lufy zgodnie ze spreadem/patternem (°)
         self.pos = pygame.Vector2(owner_pos)
         self.direction = pygame.Vector2(1, 0)
         self.angle = 0.0  # stopnie, 0 = w prawo
@@ -144,6 +146,9 @@ class Gun:
     def update(self, dt: float) -> None:
         self.cooldown = max(0.0, self.cooldown - dt)
         self.since_last_shot += dt
+        decay_t = math.exp(-18.0 * dt)
+        self.recoil_kick *= decay_t
+        self.visual_spread_angle *= decay_t
         if self.since_last_shot >= self.spray_recovery_time:
             self.shot_index = 0
             if self.spray_recovery_time > 0:
@@ -184,10 +189,13 @@ class Gun:
             pattern_angle = self._next_pattern_angle()
             spread = self.current_spread(move_state)
             random_offset = random.uniform(-spread, spread) if spread > 0 else 0.0
-            fire_dir = self.direction.rotate(pattern_angle + random_offset)
+            total_offset = pattern_angle + random_offset
+            fire_dir = self.direction.rotate(total_offset)
+            self.visual_spread_angle = total_offset
             self.shot_index += 1
             self.since_last_shot = 0.0
             self.current_bloom = min(self.max_bloom, self.current_bloom + self.spray_bloom)
+        self.recoil_kick = min(18.0, 6.0 + self.damage * 0.12)  # mocniejszy odrzut przy większym damage
         hit_point, hit_obj = raycast(owner.pos, fire_dir, self.RANGE, targets, ignore=owner)
         muzzle = self.pos + self.direction * (self.length / 2)
         return Tracer(muzzle, hit_point), hit_obj
@@ -196,9 +204,10 @@ class Gun:
         to_target = world_target - owner_pos
         if to_target.length_squared() > 0:
             self.direction = to_target.normalize()
-            # oś Y ekranu rośnie w dół, stąd minus przy obrocie
-            self.angle = math.degrees(math.atan2(-self.direction.y, self.direction.x))
-        self.pos = owner_pos + self.direction * self.HOLD_DISTANCE
+        # oś Y ekranu rośnie w dół, stąd minus przy obrocie
+        base_angle = math.degrees(math.atan2(-self.direction.y, self.direction.x))
+        self.angle = base_angle - self.visual_spread_angle
+        self.pos = owner_pos + self.direction * (self.HOLD_DISTANCE - self.recoil_kick)
         self.image = pygame.transform.rotate(self.base_image, self.angle)
 
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
